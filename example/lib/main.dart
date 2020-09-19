@@ -85,7 +85,9 @@ class _MyAppState extends State<MyApp> {
                     duration: Duration(seconds: 1),
                     opacity: _busy ? 0.7 : 1.0,
                   ),
-                  _busy ? CircularProgressIndicator() : Container(),
+                  _busy
+                      ? Center(child: CircularProgressIndicator())
+                      : Container(),
                   _recogintios.length != 0
                       ? new CustomPaint(
                           painter: RectPainter(
