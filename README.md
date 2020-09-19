@@ -1,6 +1,6 @@
 # yolov4tflite
 
-A new Flutter package project.
+Flutter plugin to use Yolov4 models with tflite.
 
 ## Getting Started
 
