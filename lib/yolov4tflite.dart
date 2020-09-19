@@ -15,13 +15,23 @@ class Yolov4tflite {
   static Future<String> loadModel(
       {@required String modelPath,
       String labels = "",
-      bool isTiny = true}) async {
+      bool isTiny = true,
+      bool isQuantized = false,
+      int inputSize = 416,
+      double imageMean = 0,
+      double imageStd = 255,
+      double minimumConfidence = 0.4}) async {
     return await _channel.invokeMethod(
       'loadModel',
       {
         "model": modelPath,
         "labels": labels,
         "isTiny": isTiny,
+        "isQuantized": isQuantized,
+        "inputSize": inputSize,
+        "imageMean": imageMean,
+        "imageStd": imageStd,
+        "minimumConfidence": minimumConfidence,
       },
     );
   }

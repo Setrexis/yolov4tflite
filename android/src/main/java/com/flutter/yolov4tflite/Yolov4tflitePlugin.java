@@ -29,7 +29,7 @@ import com.flutter.yolov4tflite.Classifier.*;
 public class Yolov4tflitePlugin implements MethodCallHandler {
     private final Registrar mRegistrar;
     private final Activity activity;
-    public static final float MINIMUM_CONFIDENCE_TF_OD_API = 0.1f;
+    public static float MINIMUM_CONFIDENCE_TF_OD_API;
     private static Classifier detector;
     private static boolean modalLoaded = false;
 
@@ -46,10 +46,16 @@ public class Yolov4tflitePlugin implements MethodCallHandler {
     @Override
     public void onMethodCall(MethodCall call, Result result) {
         if (call.method.equals("loadModel")) {
-            String modelPath = call.argument("model");
-            String labels = call.argument("labels");
-            Boolean isTiny = call.argument("isTiny");
-            loadModel(modelPath,labels,isTiny,result);
+            final String modelPath = call.argument("model");
+            final String labels = call.argument("labels");
+            final Boolean isTiny = call.argument("isTiny");
+            double confi =call.argument("minimumConfidence");
+            MINIMUM_CONFIDENCE_TF_OD_API = (float)confi;
+            final int inputSize = call.argument("inputSize");
+            final double imageMean = call.argument("imageMean");
+            final double imageStd = call.argument("imageStd");
+            final Boolean isQuantized = call.argument("isQuantized");
+            loadModel(modelPath,labels,isTiny,inputSize,imageMean,imageStd,isQuantized,result);
         } else if (call.method.equals("detectObjects")){
             String imgPath = call.argument("image");
             detectobjects(imgPath,result);
@@ -60,15 +66,14 @@ public class Yolov4tflitePlugin implements MethodCallHandler {
         }
     }
 
-    protected void loadModel(final String path, final String labels,boolean isTiny ,final Result result){
+    protected void loadModel(final String path, final String labels,final boolean isTiny ,final int inputSize,final double imageMean,final double imageStd,final boolean isQuantized,final Result result){
         new Thread(new Runnable(){
             public void run(){
                 try {
                     AssetManager assetManager = mRegistrar.context().getAssets();
                     String modalPathKey = mRegistrar.lookupKeyForAsset(path);
                     ByteBuffer modalData = loadFile(assetManager.openFd(modalPathKey));
-                    detector = YoloV4Classifier.create(modalData,labels,true);
-                    //detector.isTiny = isTiny;
+                    detector = YoloV4Classifier.create(modalData,labels,isQuantized,isTiny,inputSize,imageMean,imageStd);
                     modalLoaded=true;
                     activity.runOnUiThread(new Runnable(){
                         public void run(){

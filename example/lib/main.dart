@@ -146,7 +146,11 @@ class _MyAppState extends State<MyApp> {
     print(labels);
 
     await Yolov4tflite.loadModel(
-        modelPath: "assets/yolov4-416-fp32.tflite", labels: labels);
+        modelPath: "assets/yolov4-416-fp32.tflite",
+        labels: labels,
+        isQuantized: false,
+        isTiny: true,
+        minimumConfidence: 0.1);
     var r = await Yolov4tflite.detectObjects(imagePath: path);
     print(r);
 
@@ -184,7 +188,6 @@ class RectPainter extends CustomPainter {
       y = rect["b"] / (416 / heigth);
       w = (rect["r"] - rect["l"]) / (416 / width);
       h = (rect["t"] - rect["b"]) / (416 / heigth);
-      print(rect["t"]);
       Rect rect1 = Offset(x, y) & Size(w, h);
       canvas.drawRect(rect1, paint);
     }

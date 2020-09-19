@@ -73,13 +73,21 @@ public class YoloV4Classifier implements Classifier {
     public static Classifier create(
             final ByteBuffer model,
             final String labels,
-            final boolean isQuantized)
+            final boolean isQuantized,
+            final boolean isTiny,
+            final int inputSize,
+            final double imageMean,
+            final double imageStd)
             throws IOException {
         final YoloV4Classifier d = new YoloV4Classifier();
 
         for(String s: labels.split(",")){
             d.labels.add(s);
         }
+
+        d.isTiny = isTiny;
+        d.IMAGE_MEAN = (float)imageMean;
+        d.IMAGE_STD = (float)imageStd;
 
         try {
             Interpreter.Options options = (new Interpreter.Options());
@@ -114,9 +122,9 @@ public class YoloV4Classifier implements Classifier {
         } else {
             numBytesPerChannel = 4; // Floating point
         }
-        d.imgData = ByteBuffer.allocateDirect(1 * d.INPUT_SIZE * d.INPUT_SIZE * 3 * numBytesPerChannel);
+        d.imgData = ByteBuffer.allocateDirect(1 * inputSize * inputSize * 3 * numBytesPerChannel);
         d.imgData.order(ByteOrder.nativeOrder());
-        d.intValues = new int[d.INPUT_SIZE * d.INPUT_SIZE];
+        d.intValues = new int[inputSize * inputSize];
 
         return d;
     }
@@ -149,12 +157,11 @@ public class YoloV4Classifier implements Classifier {
     }
 
     // Float model
-    private static final float IMAGE_MEAN = 0;
+    private static float IMAGE_MEAN = 0;
 
-    private static final float IMAGE_STD = 255.0f;
+    private static float IMAGE_STD = 255.0f;
 
     //config yolov4
-    private static final int INPUT_SIZE = 416;
     private static final int[] OUTPUT_WIDTH = new int[]{52, 26, 13};
 
     private static final int[][] MASKS = new int[][]{{0, 1, 2}, {3, 4, 5}, {6, 7, 8}};
@@ -281,20 +288,6 @@ public class YoloV4Classifier implements Classifier {
      * Writes Image data into a {@code ByteBuffer}.
      */
     protected ByteBuffer convertBitmapToByteBuffer(Bitmap bitmapRaw) {
-        /**ByteBuffer byteBuffer = ByteBuffer.allocateDirect(4 * BATCH_SIZE * INPUT_SIZE * INPUT_SIZE * PIXEL_SIZE);
-        byteBuffer.order(ByteOrder.nativeOrder());
-        int[] intValues = new int[INPUT_SIZE * INPUT_SIZE];
-        bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
-        int pixel = 0;
-        for (int i = 0; i < INPUT_SIZE; ++i) {
-            for (int j = 0; j < INPUT_SIZE; ++j) {
-                final int val = intValues[pixel++];
-                byteBuffer.putFloat(((val >> 16) & 0xFF) / 255.0f);
-                byteBuffer.putFloat(((val >> 8) & 0xFF) / 255.0f);
-                byteBuffer.putFloat((val & 0xFF) / 255.0f);
-            }
-        }
-        return byteBuffer;*/
         Tensor tensor = tfLite.getInputTensor(0);
         int[] shape = tensor.shape();
         int inputSize = shape[1];
@@ -375,76 +368,6 @@ public class YoloV4Classifier implements Classifier {
         matrix.invert(new Matrix());
         return matrix;
     }
-
-//    private ArrayList<Recognition> getDetections(ByteBuffer byteBuffer, Bitmap bitmap) {
-//        ArrayList<Recognition> detections = new ArrayList<Recognition>();
-//        Map<Integer, Object> outputMap = new HashMap<>();
-//        for (int i = 0; i < OUTPUT_WIDTH.length; i++) {
-//            float[][][][][] out = new float[1][OUTPUT_WIDTH[i]][OUTPUT_WIDTH[i]][3][5 + labels.size()];
-//            outputMap.put(i, out);
-//        }
-//
-//        Log.d("YoloV4Classifier", "mObjThresh: " + getObjThresh());
-//
-//        Object[] inputArray = {byteBuffer};
-//        tfLite.runForMultipleInputsOutputs(inputArray, outputMap);
-//
-//        for (int i = 0; i < OUTPUT_WIDTH.length; i++) {
-//            int gridWidth = OUTPUT_WIDTH[i];
-//            float[][][][][] out = (float[][][][][]) outputMap.get(i);
-//
-//            Log.d("YoloV4Classifier", "out[" + i + "] detect start");
-//            for (int y = 0; y < gridWidth; ++y) {
-//                for (int x = 0; x < gridWidth; ++x) {
-//                    for (int b = 0; b < NUM_BOXES_PER_BLOCK; ++b) {
-//                        final int offset =
-//                                (gridWidth * (NUM_BOXES_PER_BLOCK * (labels.size() + 5))) * y
-//                                        + (NUM_BOXES_PER_BLOCK * (labels.size() + 5)) * x
-//                                        + (labels.size() + 5) * b;
-//
-//                        final float confidence = expit(out[0][y][x][b][4]);
-//                        int detectedClass = -1;
-//                        float maxClass = 0;
-//
-//                        final float[] classes = new float[labels.size()];
-//                        for (int c = 0; c < labels.size(); ++c) {
-//                            classes[c] = out[0][y][x][b][5 + c];
-//                        }
-//
-//                        for (int c = 0; c < labels.size(); ++c) {
-//                            if (classes[c] > maxClass) {
-//                                detectedClass = c;
-//                                maxClass = classes[c];
-//                            }
-//                        }
-//
-//                        final float confidenceInClass = maxClass * confidence;
-//                        if (confidenceInClass > getObjThresh()) {
-////                            final float xPos = (x + (expit(out[0][y][x][b][0]) * XYSCALE[i]) - (0.5f * (XYSCALE[i] - 1))) * (INPUT_SIZE / gridWidth);
-////                            final float yPos = (y + (expit(out[0][y][x][b][1]) * XYSCALE[i]) - (0.5f * (XYSCALE[i] - 1))) * (INPUT_SIZE / gridWidth);
-//
-//                            final float xPos = (x + expit(out[0][y][x][b][0])) * (1.0f * INPUT_SIZE / gridWidth);
-//                            final float yPos = (y + expit(out[0][y][x][b][1])) * (1.0f * INPUT_SIZE / gridWidth);
-//
-//                            final float w = (float) (Math.exp(out[0][y][x][b][2]) * ANCHORS[2 * MASKS[i][b]]);
-//                            final float h = (float) (Math.exp(out[0][y][x][b][3]) * ANCHORS[2 * MASKS[i][b] + 1]);
-//
-//                            final RectF rect =
-//                                    new RectF(
-//                                            Math.max(0, xPos - w / 2),
-//                                            Math.max(0, yPos - h / 2),
-//                                            Math.min(bitmap.getWidth() - 1, xPos + w / 2),
-//                                            Math.min(bitmap.getHeight() - 1, yPos + h / 2));
-//                            detections.add(new Recognition("" + offset, labels.get(detectedClass),
-//                                    confidenceInClass, rect, detectedClass));
-//                        }
-//                    }
-//                }
-//            }
-//            Log.d("YoloV4Classifier", "out[" + i + "] detect end");
-//        }
-//        return detections;
-//    }
 
     /**
      * For yolov4-tiny, the situation would be a little different from the yolov4, it only has two
@@ -544,73 +467,6 @@ public class YoloV4Classifier implements Classifier {
     public ArrayList<Recognition> recognizeImage(Bitmap bitmap) {
         ByteBuffer byteBuffer = convertBitmapToByteBuffer(bitmap);
 
-//        Map<Integer, Object> outputMap = new HashMap<>();
-//        for (int i = 0; i < OUTPUT_WIDTH.length; i++) {
-//            float[][][][][] out = new float[1][OUTPUT_WIDTH[i]][OUTPUT_WIDTH[i]][3][5 + labels.size()];
-//            outputMap.put(i, out);
-//        }
-//
-//        Log.d("YoloV4Classifier", "mObjThresh: " + getObjThresh());
-//
-//        Object[] inputArray = {byteBuffer};
-//        tfLite.runForMultipleInputsOutputs(inputArray, outputMap);
-//
-//        ArrayList<Recognition> detections = new ArrayList<Recognition>();
-//
-//        for (int i = 0; i < OUTPUT_WIDTH.length; i++) {
-//            int gridWidth = OUTPUT_WIDTH[i];
-//            float[][][][][] out = (float[][][][][]) outputMap.get(i);
-//
-//            Log.d("YoloV4Classifier", "out[" + i + "] detect start");
-//            for (int y = 0; y < gridWidth; ++y) {
-//                for (int x = 0; x < gridWidth; ++x) {
-//                    for (int b = 0; b < NUM_BOXES_PER_BLOCK; ++b) {
-//                        final int offset =
-//                                (gridWidth * (NUM_BOXES_PER_BLOCK * (labels.size() + 5))) * y
-//                                        + (NUM_BOXES_PER_BLOCK * (labels.size() + 5)) * x
-//                                        + (labels.size() + 5) * b;
-//
-//                        final float confidence = expit(out[0][y][x][b][4]);
-//                        int detectedClass = -1;
-//                        float maxClass = 0;
-//
-//                        final float[] classes = new float[labels.size()];
-//                        for (int c = 0; c < labels.size(); ++c) {
-//                            classes[c] = out[0][y][x][b][5 + c];
-//                        }
-//
-//                        for (int c = 0; c < labels.size(); ++c) {
-//                            if (classes[c] > maxClass) {
-//                                detectedClass = c;
-//                                maxClass = classes[c];
-//                            }
-//                        }
-//
-//                        final float confidenceInClass = maxClass * confidence;
-//                        if (confidenceInClass > getObjThresh()) {
-////                            final float xPos = (x + (expit(out[0][y][x][b][0]) * XYSCALE[i]) - (0.5f * (XYSCALE[i] - 1))) * (INPUT_SIZE / gridWidth);
-////                            final float yPos = (y + (expit(out[0][y][x][b][1]) * XYSCALE[i]) - (0.5f * (XYSCALE[i] - 1))) * (INPUT_SIZE / gridWidth);
-//
-//                            final float xPos = (x + expit(out[0][y][x][b][0])) * (1.0f * INPUT_SIZE / gridWidth);
-//                            final float yPos = (y + expit(out[0][y][x][b][1])) * (1.0f * INPUT_SIZE / gridWidth);
-//
-//                            final float w = (float) (Math.exp(out[0][y][x][b][2]) * ANCHORS[2 * MASKS[i][b]]);
-//                            final float h = (float) (Math.exp(out[0][y][x][b][3]) * ANCHORS[2 * MASKS[i][b] + 1]);
-//
-//                            final RectF rect =
-//                                    new RectF(
-//                                            Math.max(0, xPos - w / 2),
-//                                            Math.max(0, yPos - h / 2),
-//                                            Math.min(bitmap.getWidth() - 1, xPos + w / 2),
-//                                            Math.min(bitmap.getHeight() - 1, yPos + h / 2));
-//                            detections.add(new Recognition("" + offset, labels.get(detectedClass),
-//                                    confidenceInClass, rect, detectedClass));
-//                        }
-//                    }
-//                }
-//            }
-//            Log.d("YoloV4Classifier", "out[" + i + "] detect end");
-//        }
         ArrayList<Recognition> detections;
         if (isTiny) {
             detections = getDetectionsForTiny(byteBuffer, bitmap);
