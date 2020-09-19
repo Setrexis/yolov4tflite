@@ -108,22 +108,24 @@ public interface Classifier {
 
         @Override
         public String toString() {
-            String resultString = "";
+            String resultString = "{";
             if (id != null) {
-                resultString += "[" + id + "] ";
+                resultString += "\"id\": " + id + ",";
             }
 
             if (title != null) {
-                resultString += title + " ";
+                resultString += "\"detectedClass\": \"" + title + "\",";
             }
 
             if (confidence != null) {
-                resultString += String.format("(%.1f%%) ", confidence * 100.0f);
+                resultString += "\"confidenceInClass\": " +  confidence +",";
             }
 
             if (location != null) {
-                resultString += location + " ";
+                resultString += "\"rect\": { \"t\": " + location.top + ", \"b\": " + location.bottom +", \"l\": " + location.left + ", \"r\": " + location.right + "}";
             }
+
+            resultString += "}";
 
             return resultString.trim();
         }

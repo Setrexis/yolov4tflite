@@ -26,7 +26,8 @@ class Yolov4tflite {
     );
   }
 
-  static Future<String> detectObjects({@required String imagePath}) async {
+  static Future<List<dynamic>> detectObjects(
+      {@required String imagePath}) async {
     return await _channel.invokeMethod('detectObjects', {"image": imagePath});
   }
 }

@@ -7,6 +7,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.renderscript.Type;
 import android.util.Log;
+import android.app.Activity;
+
 
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
@@ -19,23 +21,26 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.List;
+import java.util.ArrayList;
 
 import com.flutter.yolov4tflite.*;
 import com.flutter.yolov4tflite.Classifier.*;
 
 public class Yolov4tflitePlugin implements MethodCallHandler {
     private final Registrar mRegistrar;
-    public static final float MINIMUM_CONFIDENCE_TF_OD_API = 0.5f;
+    private final Activity activity;
+    public static final float MINIMUM_CONFIDENCE_TF_OD_API = 0.1f;
     private static Classifier detector;
     private static boolean modalLoaded = false;
 
     public static void registerWith(Registrar registrar) {
         final MethodChannel channel = new MethodChannel(registrar.messenger(), "yolov4tflite");
-        channel.setMethodCallHandler(new Yolov4tflitePlugin(registrar));
+        channel.setMethodCallHandler(new Yolov4tflitePlugin(registrar,registrar.activity()));
     }
     
-    private Yolov4tflitePlugin(Registrar registrar) {
+    private Yolov4tflitePlugin(Registrar registrar, Activity activity) {
         this.mRegistrar = registrar;
+        this.activity = activity;
     }
 
     @Override
@@ -56,18 +61,32 @@ public class Yolov4tflitePlugin implements MethodCallHandler {
     }
 
     protected void loadModel(final String path, final String labels,boolean isTiny ,final Result result){
-        try {
-            AssetManager assetManager = mRegistrar.context().getAssets();
-            String modalPathKey = mRegistrar.lookupKeyForAsset(path);
-            ByteBuffer modalData = loadFile(assetManager.openFd(modalPathKey));
-            detector = YoloV4Classifier.create(modalData,labels,false);
-            //detector.isTiny = isTiny;
-            modalLoaded=true;
-            result.success("Modal Loaded Sucessfully");
-        } catch (Exception e) {
-            e.printStackTrace();
-            result.error("Modal failed to loaded", e.getMessage(), null);
-        }
+        new Thread(new Runnable(){
+            public void run(){
+                try {
+                    AssetManager assetManager = mRegistrar.context().getAssets();
+                    String modalPathKey = mRegistrar.lookupKeyForAsset(path);
+                    ByteBuffer modalData = loadFile(assetManager.openFd(modalPathKey));
+                    detector = YoloV4Classifier.create(modalData,labels,true);
+                    //detector.isTiny = isTiny;
+                    modalLoaded=true;
+                    activity.runOnUiThread(new Runnable(){
+                        public void run(){
+                            result.success("Modal Loaded Sucessfully");
+                        }
+                    });
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    final String msg = e.getMessage();
+                    activity.runOnUiThread(new Runnable(){
+                        public void run(){
+                            result.error("Modal failed to loaded", msg, null);
+                        }
+                    });
+                }
+            }
+            
+        }).start();
     }
 
     public ByteBuffer loadFile(AssetFileDescriptor fileDescriptor) throws IOException {
@@ -79,19 +98,39 @@ public class Yolov4tflitePlugin implements MethodCallHandler {
     }
 
     public void detectobjects(final String imagePath, final Result result) {
-        if (!modalLoaded){
-            result.error("Model is not loaded", "Please load the model before using this methode.", null);
-            return;
-        }
-        try {
-            //String imagePathKey = mRegistrar.lookupKeyForAsset(imagePath);
-            Bitmap image = Bitmap.createBitmap(BitmapFactory.decodeFile(imagePath));
-            List<Recognition> prediction = detector.recognizeImage(image);
-            System.out.println(prediction);
-            result.success("prediction");
-        } catch (Exception e) {
-            e.printStackTrace();
-            result.error("Running model failed", e.getMessage(), null);
-        }
+        new Thread(new Runnable(){
+            public void run(){
+                if (!modalLoaded){
+                    result.error("Model is not loaded", "Please load the model before using this methode.", null);
+                    return;
+                }
+                try {
+                    //String imagePathKey = mRegistrar.lookupKeyForAsset(imagePath);
+                    Bitmap image = Bitmap.createBitmap(BitmapFactory.decodeFile(imagePath));
+                    List<Recognition> prediction = detector.recognizeImage(image);
+                    System.out.println(prediction);
+                    List<String> pred = new ArrayList();
+                    for (Recognition r : prediction) {
+                        pred.add(r.toString());
+                    }
+                    final List<String> fpred = pred;
+                    activity.runOnUiThread(new Runnable(){
+                        public void run(){
+                            result.success(fpred);
+                        }
+                    });
+                    
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    final String msg = e.getMessage();
+                    activity.runOnUiThread(new Runnable(){
+                        public void run(){
+                            result.error("Running model failed", msg, null);
+                        }
+                    });
+                }
+            }
+        }).start();
+        
     }
 }

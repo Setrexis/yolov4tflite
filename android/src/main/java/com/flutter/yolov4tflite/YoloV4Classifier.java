@@ -18,6 +18,12 @@ import android.graphics.RectF;
 import android.os.Build;
 import android.os.Trace;
 import android.util.Log;
+import android.graphics.Canvas;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
+import android.graphics.Matrix;
+import android.graphics.Paint;
+import android.graphics.BitmapFactory;
 
 import java.io.BufferedReader;
 import java.io.FileInputStream;
@@ -38,7 +44,9 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import org.tensorflow.lite.DataType;
 import org.tensorflow.lite.Interpreter;
+import org.tensorflow.lite.Tensor;
 import org.tensorflow.lite.gpu.GpuDelegate;
 import org.tensorflow.lite.nnapi.NnApiDelegate;
 
@@ -157,13 +165,15 @@ public class YoloV4Classifier implements Classifier {
 
     private static final int NUM_BOXES_PER_BLOCK = 3;
 
+    private static final int BYTES_PER_CHANNEL = 4;
+
     // Number of threads in the java app
     private static final int NUM_THREADS = 4;
     private static boolean isNNAPI = false;
     private static boolean isGPU = false;
 
     // tiny or not
-    private static boolean isTiny = false;
+    private static boolean isTiny = true;
 
     // config yolov4 tiny
     private static final int[] OUTPUT_WIDTH_TINY = new int[]{2535, 2535};
@@ -270,8 +280,8 @@ public class YoloV4Classifier implements Classifier {
     /**
      * Writes Image data into a {@code ByteBuffer}.
      */
-    protected ByteBuffer convertBitmapToByteBuffer(Bitmap bitmap) {
-        ByteBuffer byteBuffer = ByteBuffer.allocateDirect(4 * BATCH_SIZE * INPUT_SIZE * INPUT_SIZE * PIXEL_SIZE);
+    protected ByteBuffer convertBitmapToByteBuffer(Bitmap bitmapRaw) {
+        /**ByteBuffer byteBuffer = ByteBuffer.allocateDirect(4 * BATCH_SIZE * INPUT_SIZE * INPUT_SIZE * PIXEL_SIZE);
         byteBuffer.order(ByteOrder.nativeOrder());
         int[] intValues = new int[INPUT_SIZE * INPUT_SIZE];
         bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
@@ -284,7 +294,86 @@ public class YoloV4Classifier implements Classifier {
                 byteBuffer.putFloat((val & 0xFF) / 255.0f);
             }
         }
-        return byteBuffer;
+        return byteBuffer;*/
+        Tensor tensor = tfLite.getInputTensor(0);
+        int[] shape = tensor.shape();
+        int inputSize = shape[1];
+        int inputChannels = shape[3];
+
+        int bytePerChannel = tensor.dataType() == DataType.UINT8 ? 1 : BYTES_PER_CHANNEL;
+        ByteBuffer imgData = ByteBuffer.allocateDirect(1 * inputSize * inputSize * inputChannels * bytePerChannel);
+        imgData.order(ByteOrder.nativeOrder());
+
+        Bitmap bitmap = bitmapRaw;
+        if (bitmapRaw.getWidth() != inputSize || bitmapRaw.getHeight() != inputSize) {
+        Matrix matrix = getTransformationMatrix(bitmapRaw.getWidth(), bitmapRaw.getHeight(),
+            inputSize, inputSize, false);
+        bitmap = Bitmap.createBitmap(inputSize, inputSize, Bitmap.Config.ARGB_8888);
+        final Canvas canvas = new Canvas(bitmap);
+        if (inputChannels == 1){
+            Paint paint = new Paint();
+            ColorMatrix cm = new ColorMatrix();
+            cm.setSaturation(0);
+            ColorMatrixColorFilter f = new ColorMatrixColorFilter(cm);
+            paint.setColorFilter(f);
+            canvas.drawBitmap(bitmapRaw, matrix, paint);
+        } else {
+            canvas.drawBitmap(bitmapRaw, matrix, null);
+        }
+        }
+
+        if (tensor.dataType() == DataType.FLOAT32) {
+        for (int i = 0; i < inputSize; ++i) {
+            for (int j = 0; j < inputSize; ++j) {
+            int pixelValue = bitmap.getPixel(j, i);
+            if (inputChannels > 1){
+                imgData.putFloat((((pixelValue >> 16) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+                imgData.putFloat((((pixelValue >> 8) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+                imgData.putFloat(((pixelValue & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+            } else {
+                imgData.putFloat((((pixelValue >> 16 | pixelValue >> 8 | pixelValue) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+            }
+            }
+        }
+        } else {
+        for (int i = 0; i < inputSize; ++i) {
+            for (int j = 0; j < inputSize; ++j) {
+            int pixelValue = bitmap.getPixel(j, i);
+            if (inputChannels > 1){
+                imgData.put((byte) ((pixelValue >> 16) & 0xFF));
+                imgData.put((byte) ((pixelValue >> 8) & 0xFF));
+                imgData.put((byte) (pixelValue & 0xFF));
+            } else {
+                imgData.put((byte) ((pixelValue >> 16 | pixelValue >> 8 | pixelValue) & 0xFF));
+            }
+            }
+        }
+        }
+
+        return imgData;
+    }
+
+    private Matrix getTransformationMatrix(final int srcWidth,
+                                                final int srcHeight,
+                                                final int dstWidth,
+                                                final int dstHeight,
+                                                final boolean maintainAspectRatio) {
+        final Matrix matrix = new Matrix();
+
+        if (srcWidth != dstWidth || srcHeight != dstHeight) {
+        final float scaleFactorX = dstWidth / (float) srcWidth;
+        final float scaleFactorY = dstHeight / (float) srcHeight;
+
+        if (maintainAspectRatio) {
+            final float scaleFactor = Math.max(scaleFactorX, scaleFactorY);
+            matrix.postScale(scaleFactor, scaleFactor);
+        } else {
+            matrix.postScale(scaleFactorX, scaleFactorY);
+        }
+        }
+
+        matrix.invert(new Matrix());
+        return matrix;
     }
 
 //    private ArrayList<Recognition> getDetections(ByteBuffer byteBuffer, Bitmap bitmap) {
@@ -415,6 +504,8 @@ public class YoloV4Classifier implements Classifier {
         outputMap.put(1, new float[1][OUTPUT_WIDTH_TINY[1]][labels.size()]);
         Object[] inputArray = {byteBuffer};
         tfLite.runForMultipleInputsOutputs(inputArray, outputMap);
+
+        System.out.print(outputMap);
 
         int gridWidth = OUTPUT_WIDTH_TINY[0];
         float[][][] bboxes = (float [][][]) outputMap.get(0);
