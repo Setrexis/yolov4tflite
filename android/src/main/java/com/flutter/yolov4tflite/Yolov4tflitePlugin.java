@@ -55,7 +55,7 @@ public class Yolov4tflitePlugin implements MethodCallHandler {
     protected void loadModel(final String path, final String labels, final Result result){
         try {
             AssetManager assetManager = mRegistrar.context().getAssets();
-            String modalPathKey = mRegistrar.lookupKeyForAsse(path);
+            String modalPathKey = mRegistrar.lookupKeyForAsset(path);
             ByteBuffer modalData = loadFile(assetManager.openFd(modalPathKey));
             detector = YoloV4Classifier.create(modalData,labels,false);
             modalLoaded=true;
