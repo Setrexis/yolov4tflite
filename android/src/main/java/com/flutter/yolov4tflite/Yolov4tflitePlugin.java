@@ -43,21 +43,25 @@ public class Yolov4tflitePlugin implements MethodCallHandler {
         if (call.method.equals("loadModel")) {
             String modelPath = call.argument("model");
             String labels = call.argument("labels");
-            loadModel(modelPath,labels,result);
+            Boolean isTiny = call.argument("isTiny");
+            loadModel(modelPath,labels,isTiny,result);
         } else if (call.method.equals("detectObjects")){
             String imgPath = call.argument("image");
             detectobjects(imgPath,result);
-        }else{
-            System.out.println("No method found");
+        }else if (call.method.equals("getPlatformVersion")) {
+            result.success("Android " + android.os.Build.VERSION.RELEASE);
+        } else {
+            result.notImplemented();
         }
     }
 
-    protected void loadModel(final String path, final String labels, final Result result){
+    protected void loadModel(final String path, final String labels,boolean isTiny ,final Result result){
         try {
             AssetManager assetManager = mRegistrar.context().getAssets();
             String modalPathKey = mRegistrar.lookupKeyForAsset(path);
             ByteBuffer modalData = loadFile(assetManager.openFd(modalPathKey));
             detector = YoloV4Classifier.create(modalData,labels,false);
+            //detector.isTiny = isTiny;
             modalLoaded=true;
             result.success("Modal Loaded Sucessfully");
         } catch (Exception e) {
@@ -80,8 +84,8 @@ public class Yolov4tflitePlugin implements MethodCallHandler {
             return;
         }
         try {
-            String imagePathKey = mRegistrar.lookupKeyForAsset(imagePath);
-            Bitmap image = Bitmap.createBitmap(BitmapFactory.decodeFile(imagePathKey));
+            //String imagePathKey = mRegistrar.lookupKeyForAsset(imagePath);
+            Bitmap image = Bitmap.createBitmap(BitmapFactory.decodeFile(imagePath));
             List<Recognition> prediction = detector.recognizeImage(image);
             System.out.println(prediction);
             result.success("prediction");
