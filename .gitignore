@@ -30,6 +30,8 @@
 .pub/
 build/
 
+example/assets/
+
 # Android related
 **/android/**/gradle-wrapper.jar
 **/android/.gradle
