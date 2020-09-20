@@ -25,11 +25,13 @@ class _MyAppState extends State<MyApp> {
   List<Result> _recogintios;
   File _imagePath;
   double _aspectRatio;
+  bool modelLoaded = false;
 
   @override
   void initState() {
     super.initState();
     initPlatformState();
+    loadModel().then((value) => modelLoaded = true);
     _busy = false;
     _recogintios = new List();
   }
@@ -52,6 +54,23 @@ class _MyAppState extends State<MyApp> {
     setState(() {
       _platformVersion = platformVersion;
     });
+  }
+
+  Future<void> loadModel() async {
+    String labels = await getFileData("assets/labels.txt");
+    labels = labels
+        .replaceAll(new RegExp("[\n]"), ",")
+        .replaceAll(new RegExp("[\t\r]"), "");
+
+    await Yolov4tflite.loadModel(
+        modelPath: "assets/yolov4-416-fp32.tflite",
+        labels: labels,
+        isQuantized: true,
+        isTiny: true,
+        minimumConfidence: 0.3,
+        useNNAPI: false,
+        useGPU: false,
+        nummberOfThreads: 6);
   }
 
   Future openImagePicker() async {
@@ -136,20 +155,8 @@ class _MyAppState extends State<MyApp> {
   void predictImage(File image) async {
     String path = image.path;
 
-    String labels = await getFileData("assets/labels.txt");
-    labels = labels
-        .replaceAll(new RegExp("[\n]"), ",")
-        .replaceAll(new RegExp("[\t\r]"), "");
-    print(labels);
-
-    await Yolov4tflite.loadModel(
-        modelPath: "assets/yolov4-416-fp32.tflite",
-        labels: labels,
-        isQuantized: false,
-        isTiny: true,
-        minimumConfidence: 0.1,
-        useNNAPI: false,
-        useGPU: false);
+    // model shuld be loded
+    if (!modelLoaded) return;
 
     var startTime = DateTime.now();
 
@@ -190,18 +197,18 @@ class RectPainter extends CustomPainter {
       paint.style = PaintingStyle.stroke;
       paint.strokeWidth = 2.0;
       double l, t, r, b;
-      //if (this.width > this.heigth) {
-      l = rect["l"] / (416 / width);
-      b = rect["b"] / (416 / heigth);
-      t = rect["t"] / (416 / heigth);
-      r = rect["r"] / (416 / width);
-      /*} else {
+      if (this.width > this.heigth) {
+        l = rect["l"] / (416 / width);
+        b = rect["b"] / (416 / heigth);
+        t = rect["t"] / (416 / heigth);
+        r = rect["r"] / (416 / width);
+      } else {
         // Yolo detector rotates image if width < heigth
-        l = rect["t"] / (416 / width);
+        l = width - rect["t"] / (416 / width);
         t = rect["l"] / (416 / heigth);
-        r = rect["b"] / (416 / width);
+        r = width - rect["b"] / (416 / width);
         b = rect["r"] / (416 / heigth);
-      }*/
+      }
 
       TextSpan span = TextSpan(
           text: object + " " + (confidence * 100).toString() + "%",
@@ -214,7 +221,7 @@ class RectPainter extends CustomPainter {
           textAlign: TextAlign.left,
           textDirection: TextDirection.ltr);
       tp.layout();
-      tp.paint(canvas, Offset(l, t - 10));
+      tp.paint(canvas, Offset(this.width > this.heigth ? l : r, t - 10));
 
       Rect rect1 = Rect.fromLTRB(l, t, r, b);
       canvas.drawRect(rect1, paint);
