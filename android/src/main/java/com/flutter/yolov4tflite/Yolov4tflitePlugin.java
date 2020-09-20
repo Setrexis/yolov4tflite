@@ -55,7 +55,8 @@ public class Yolov4tflitePlugin implements MethodCallHandler {
             final double imageMean = call.argument("imageMean");
             final double imageStd = call.argument("imageStd");
             final Boolean isQuantized = call.argument("isQuantized");
-            loadModel(modelPath,labels,isTiny,inputSize,imageMean,imageStd,isQuantized,result);
+            final boolean useGPU = call.argument("useGPU");
+            loadModel(modelPath,labels,isTiny,inputSize,imageMean,imageStd,isQuantized,useGPU,result);
         } else if (call.method.equals("detectObjects")){
             String imgPath = call.argument("image");
             detectobjects(imgPath,result);
@@ -66,7 +67,7 @@ public class Yolov4tflitePlugin implements MethodCallHandler {
         }
     }
 
-    protected void loadModel(final String path, final String labels,final boolean isTiny ,final int inputSize,final double imageMean,final double imageStd,final boolean isQuantized,final Result result){
+    protected void loadModel(final String path, final String labels,final boolean isTiny ,final int inputSize,final double imageMean,final double imageStd,final boolean isQuantized,final boolean useGPU,final Result result){
         new Thread(new Runnable(){
             public void run(){
                 try {

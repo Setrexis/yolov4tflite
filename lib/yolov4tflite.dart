@@ -20,7 +20,8 @@ class Yolov4tflite {
       int inputSize = 416,
       double imageMean = 0,
       double imageStd = 255,
-      double minimumConfidence = 0.4}) async {
+      double minimumConfidence = 0.4,
+      bool useGPU = false}) async {
     return await _channel.invokeMethod(
       'loadModel',
       {
@@ -32,6 +33,7 @@ class Yolov4tflite {
         "imageMean": imageMean,
         "imageStd": imageStd,
         "minimumConfidence": minimumConfidence,
+        "useGPU": useGPU,
       },
     );
   }

@@ -97,7 +97,8 @@ class _MyAppState extends State<MyApp> {
                                 MediaQuery.of(context).size.width,
                                 MediaQuery.of(context).size.width *
                                     _aspectRatio,
-                                _recogintios[index].name))),
+                                _recogintios[index].name,
+                                _recogintios[index].confidence))),
                   )
                 ],
                 alignment: Alignment.topLeft,
@@ -172,7 +173,8 @@ class RectPainter extends CustomPainter {
   double heigth;
   double width;
   String object;
-  RectPainter(this.rect, this.width, this.heigth, this.object);
+  double confidence;
+  RectPainter(this.rect, this.width, this.heigth, this.object, this.confidence);
   @override
   void paint(Canvas canvas, Size size) {
     if (rect != null) {
@@ -195,7 +197,7 @@ class RectPainter extends CustomPainter {
       }*/
 
       TextSpan span = TextSpan(
-          text: object,
+          text: object + " " + (confidence * 100).toString() + "%",
           style: TextStyle(
               color: Colors.black,
               fontSize: 8,

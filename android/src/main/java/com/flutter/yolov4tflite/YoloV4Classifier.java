@@ -77,7 +77,8 @@ public class YoloV4Classifier implements Classifier {
             final boolean isTiny,
             final int inputSize,
             final double imageMean,
-            final double imageStd)
+            final double imageStd,
+            final boolean useGPU)
             throws IOException {
         final YoloV4Classifier d = new YoloV4Classifier();
 
@@ -85,6 +86,7 @@ public class YoloV4Classifier implements Classifier {
             d.labels.add(s);
         }
 
+        d.isGPU = useGPU;
         d.isTiny = isTiny;
         d.IMAGE_MEAN = (float)imageMean;
         d.IMAGE_STD = (float)imageStd;
@@ -299,20 +301,20 @@ public class YoloV4Classifier implements Classifier {
 
         Bitmap bitmap = bitmapRaw;
         if (bitmapRaw.getWidth() != inputSize || bitmapRaw.getHeight() != inputSize) {
-        Matrix matrix = getTransformationMatrix(bitmapRaw.getWidth(), bitmapRaw.getHeight(),
-            inputSize, inputSize, false);
-        bitmap = Bitmap.createBitmap(inputSize, inputSize, Bitmap.Config.ARGB_8888);
-        final Canvas canvas = new Canvas(bitmap);
-        if (inputChannels == 1){
-            Paint paint = new Paint();
-            ColorMatrix cm = new ColorMatrix();
-            cm.setSaturation(0);
-            ColorMatrixColorFilter f = new ColorMatrixColorFilter(cm);
-            paint.setColorFilter(f);
-            canvas.drawBitmap(bitmapRaw, matrix, paint);
-        } else {
-            canvas.drawBitmap(bitmapRaw, matrix, null);
-        }
+            Matrix matrix = getTransformationMatrix(bitmapRaw.getWidth(), bitmapRaw.getHeight(),
+                inputSize, inputSize, false);
+            bitmap = Bitmap.createBitmap(inputSize, inputSize, Bitmap.Config.ARGB_8888);
+            final Canvas canvas = new Canvas(bitmap);
+            if (inputChannels == 1){
+                Paint paint = new Paint();
+                ColorMatrix cm = new ColorMatrix();
+                cm.setSaturation(0);
+                ColorMatrixColorFilter f = new ColorMatrixColorFilter(cm);
+                paint.setColorFilter(f);
+                canvas.drawBitmap(bitmapRaw, matrix, paint);
+            } else {
+                canvas.drawBitmap(bitmapRaw, matrix, null);
+            }
         }
 
         if (tensor.dataType() == DataType.FLOAT32) {
