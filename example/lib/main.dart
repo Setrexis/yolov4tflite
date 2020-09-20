@@ -88,13 +88,6 @@ class _MyAppState extends State<MyApp> {
                   _busy
                       ? Center(child: CircularProgressIndicator())
                       : Container(),
-                  _recogintios.length != 0
-                      ? new CustomPaint(
-                          painter: RectPainter(
-                              _recogintios[0].rect,
-                              MediaQuery.of(context).size.width,
-                              MediaQuery.of(context).size.width * _aspectRatio))
-                      : Container(),
                   Column(
                     children: List<Widget>.generate(
                         _recogintios.length,
@@ -103,16 +96,19 @@ class _MyAppState extends State<MyApp> {
                                 _recogintios[index].rect,
                                 MediaQuery.of(context).size.width,
                                 MediaQuery.of(context).size.width *
-                                    _aspectRatio))),
+                                    _aspectRatio,
+                                _recogintios[index].name))),
                   )
                 ],
                 alignment: Alignment.topLeft,
               ),
-        Expanded(
-          child: Center(
-            child: Text('Running on: $_platformVersion\n'),
-          ),
-        ),
+        _busy || _recogintios.length == 0
+            ? Expanded(
+                child: Center(
+                  child: Text('Running on: $_platformVersion\n'),
+                ),
+              )
+            : Container(),
         _recogintios.length == 0
             ? Container()
             : Expanded(
@@ -175,7 +171,8 @@ class RectPainter extends CustomPainter {
   Map rect;
   double heigth;
   double width;
-  RectPainter(this.rect, this.width, this.heigth);
+  String object;
+  RectPainter(this.rect, this.width, this.heigth, this.object);
   @override
   void paint(Canvas canvas, Size size) {
     if (rect != null) {
@@ -183,12 +180,34 @@ class RectPainter extends CustomPainter {
       paint.color = Colors.yellow;
       paint.style = PaintingStyle.stroke;
       paint.strokeWidth = 2.0;
-      double x, y, w, h;
-      x = rect["l"] / (416 / width);
-      y = rect["b"] / (416 / heigth);
-      w = (rect["r"] - rect["l"]) / (416 / width);
-      h = (rect["t"] - rect["b"]) / (416 / heigth);
-      Rect rect1 = Offset(x, y) & Size(w, h);
+      double l, t, r, b;
+      //if (this.width > this.heigth) {
+      l = rect["l"] / (416 / width);
+      b = rect["b"] / (416 / heigth);
+      t = rect["t"] / (416 / heigth);
+      r = rect["r"] / (416 / width);
+      /*} else {
+        // Yolo detector rotates image if width < heigth
+        l = rect["t"] / (416 / width);
+        t = rect["l"] / (416 / heigth);
+        r = rect["b"] / (416 / width);
+        b = rect["r"] / (416 / heigth);
+      }*/
+
+      TextSpan span = TextSpan(
+          text: object,
+          style: TextStyle(
+              color: Colors.black,
+              fontSize: 8,
+              backgroundColor: Colors.yellow));
+      TextPainter tp = TextPainter(
+          text: span,
+          textAlign: TextAlign.left,
+          textDirection: TextDirection.ltr);
+      tp.layout();
+      tp.paint(canvas, Offset(l, t - 10));
+
+      Rect rect1 = Rect.fromLTRB(l, t, r, b);
       canvas.drawRect(rect1, paint);
     }
   }
