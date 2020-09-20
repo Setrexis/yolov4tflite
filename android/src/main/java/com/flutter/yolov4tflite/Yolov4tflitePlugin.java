@@ -64,7 +64,15 @@ public class Yolov4tflitePlugin implements MethodCallHandler {
             detectobjects(imgPath,result);
         }else if (call.method.equals("getPlatformVersion")) {
             result.success("Android " + android.os.Build.VERSION.RELEASE);
-        } else {
+        } else if(call.method.equals("close")){
+            try{
+                if(detector!=null)detector.close();
+                result.success("Model closed");
+            }catch (Exception e){
+                e.printStackTrace();
+                result.error("Modal failed to close", e.getMessage(), null);
+            }
+        }else {
             result.notImplemented();
         }
     }

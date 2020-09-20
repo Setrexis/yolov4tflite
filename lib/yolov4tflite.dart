@@ -61,4 +61,8 @@ class Yolov4tflite {
       {@required String imagePath}) async {
     return await _channel.invokeMethod('detectObjects', {"image": imagePath});
   }
+
+  static Future<String> closeModel() async {
+    return await _channel.invokeMethod("close");
+  }
 }
