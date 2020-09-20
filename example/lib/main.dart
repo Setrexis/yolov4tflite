@@ -147,8 +147,15 @@ class _MyAppState extends State<MyApp> {
         labels: labels,
         isQuantized: false,
         isTiny: true,
-        minimumConfidence: 0.1);
+        minimumConfidence: 0.1,
+        useNNAPI: false,
+        useGPU: false);
+
+    var startTime = DateTime.now();
+
     var r = await Yolov4tflite.detectObjects(imagePath: path);
+
+    print(DateTime.now().difference(startTime));
     print(r);
 
     List<Result> results = new List();

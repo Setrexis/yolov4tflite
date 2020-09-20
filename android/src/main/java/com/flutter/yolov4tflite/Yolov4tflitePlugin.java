@@ -56,7 +56,9 @@ public class Yolov4tflitePlugin implements MethodCallHandler {
             final double imageStd = call.argument("imageStd");
             final Boolean isQuantized = call.argument("isQuantized");
             final boolean useGPU = call.argument("useGPU");
-            loadModel(modelPath,labels,isTiny,inputSize,imageMean,imageStd,isQuantized,useGPU,result);
+            final boolean useNNAPI = call.argument("useNNAPI");
+            final int nummberOfThreads = call.argument("nummberOfThreads");
+            loadModel(modelPath,labels,isTiny,inputSize,imageMean,imageStd,isQuantized,useGPU,useNNAPI,nummberOfThreads,result);
         } else if (call.method.equals("detectObjects")){
             String imgPath = call.argument("image");
             detectobjects(imgPath,result);
@@ -67,14 +69,14 @@ public class Yolov4tflitePlugin implements MethodCallHandler {
         }
     }
 
-    protected void loadModel(final String path, final String labels,final boolean isTiny ,final int inputSize,final double imageMean,final double imageStd,final boolean isQuantized,final boolean useGPU,final Result result){
+    protected void loadModel(final String path, final String labels,final boolean isTiny ,final int inputSize,final double imageMean,final double imageStd,final boolean isQuantized,final boolean useGPU,final boolean useNNAPI,final int nummberOfThreads,final Result result){
         new Thread(new Runnable(){
             public void run(){
                 try {
                     AssetManager assetManager = mRegistrar.context().getAssets();
                     String modalPathKey = mRegistrar.lookupKeyForAsset(path);
                     ByteBuffer modalData = loadFile(assetManager.openFd(modalPathKey));
-                    detector = YoloV4Classifier.create(modalData,labels,isQuantized,isTiny,inputSize,imageMean,imageStd);
+                    detector = YoloV4Classifier.create(modalData,labels,isQuantized,isTiny,inputSize,imageMean,imageStd,useGPU,useNNAPI,nummberOfThreads);
                     modalLoaded=true;
                     activity.runOnUiThread(new Runnable(){
                         public void run(){
@@ -115,7 +117,7 @@ public class Yolov4tflitePlugin implements MethodCallHandler {
                     Bitmap image = Bitmap.createBitmap(BitmapFactory.decodeFile(imagePath));
                     List<Recognition> prediction = detector.recognizeImage(image);
                     System.out.println(prediction);
-                    List<String> pred = new ArrayList();
+                    List<String> pred = new ArrayList<String>();
                     for (Recognition r : prediction) {
                         pred.add(r.toString());
                     }

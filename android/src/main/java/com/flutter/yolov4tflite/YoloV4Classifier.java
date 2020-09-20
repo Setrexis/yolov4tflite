@@ -63,13 +63,6 @@ import com.flutter.yolov4tflite.*;
  */
 public class YoloV4Classifier implements Classifier {
 
-    /**
-     * Initializes a native TensorFlow session for classifying images.
-     *
-     * @param model         The ByteBuffer containing the GraphDef protocol buffer.
-     * @param labels        Commaseperated String containing  labels for classes.
-     * @param isQuantized   Boolean representing model is quantized or not
-     */
     public static Classifier create(
             final ByteBuffer model,
             final String labels,
@@ -78,7 +71,9 @@ public class YoloV4Classifier implements Classifier {
             final int inputSize,
             final double imageMean,
             final double imageStd,
-            final boolean useGPU)
+            final boolean useGPU,
+            final boolean useNNAPI,
+            final int nummberOfThreads)
             throws IOException {
         final YoloV4Classifier d = new YoloV4Classifier();
 
@@ -86,6 +81,8 @@ public class YoloV4Classifier implements Classifier {
             d.labels.add(s);
         }
 
+        d.NUM_THREADS = nummberOfThreads;
+        d.isNNAPI = useNNAPI;
         d.isGPU = useGPU;
         d.isTiny = isTiny;
         d.IMAGE_MEAN = (float)imageMean;
@@ -95,19 +92,16 @@ public class YoloV4Classifier implements Classifier {
             Interpreter.Options options = (new Interpreter.Options());
             options.setNumThreads(NUM_THREADS);
             if (isNNAPI) {
+                isNNAPI = false;
                 NnApiDelegate nnApiDelegate = null;
                 // Initialize interpreter with NNAPI delegate for Android Pie or above
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    isNNAPI = true;
                     nnApiDelegate = new NnApiDelegate();
                     options.addDelegate(nnApiDelegate);
-                    options.setNumThreads(NUM_THREADS);
-                    options.setUseNNAPI(false);
-                    options.setAllowFp16PrecisionForFp32(true);
-                    options.setAllowBufferHandleOutput(true);
-                    options.setUseNNAPI(true);
                 }
             }
-            if (isGPU) {
+            if (isGPU && !isNNAPI) {
                 GpuDelegate gpuDelegate = new GpuDelegate();
                 options.addDelegate(gpuDelegate);
             }
@@ -145,12 +139,10 @@ public class YoloV4Classifier implements Classifier {
     }
 
     public void setNumThreads(int num_threads) {
-        if (tfLite != null) tfLite.setNumThreads(num_threads);
     }
 
     @Override
     public void setUseNNAPI(boolean isChecked) {
-        if (tfLite != null) tfLite.setUseNNAPI(isChecked);
     }
 
     @Override
@@ -177,7 +169,7 @@ public class YoloV4Classifier implements Classifier {
     private static final int BYTES_PER_CHANNEL = 4;
 
     // Number of threads in the java app
-    private static final int NUM_THREADS = 4;
+    private static int NUM_THREADS = 4;
     private static boolean isNNAPI = false;
     private static boolean isGPU = false;
 
