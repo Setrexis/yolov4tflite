@@ -25,15 +25,21 @@ class _MyAppState extends State<MyApp> {
   List<Result> _recogintios;
   File _imagePath;
   double _aspectRatio;
-  bool modelLoaded = false;
+  Future<bool> modelLoaded;
 
   @override
   void initState() {
     super.initState();
     initPlatformState();
-    loadModel().then((value) => modelLoaded = true);
+    modelLoaded = loadModel();
     _busy = false;
     _recogintios = new List();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    Yolov4tflite.closeModel();
   }
 
   // Platform messages are asynchronous, so we initialize in an async method.
@@ -56,7 +62,7 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
-  Future<void> loadModel() async {
+  Future<bool> loadModel() async {
     String labels = await getFileData("assets/labels.txt");
     labels = labels
         .replaceAll(new RegExp("[\n]"), ",")
@@ -71,6 +77,7 @@ class _MyAppState extends State<MyApp> {
         useNNAPI: false,
         useGPU: false,
         nummberOfThreads: 6);
+    return true;
   }
 
   Future openImagePicker() async {
@@ -156,7 +163,7 @@ class _MyAppState extends State<MyApp> {
     String path = image.path;
 
     // model shuld be loded
-    if (!modelLoaded) return;
+    if (!await modelLoaded) return;
 
     var startTime = DateTime.now();
 
