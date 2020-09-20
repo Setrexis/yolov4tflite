@@ -71,7 +71,7 @@ class _MyAppState extends State<MyApp> {
     await Yolov4tflite.loadModel(
         modelPath: "assets/yolov4-416-fp32.tflite",
         labels: labels,
-        isQuantized: true,
+        isQuantized: false,
         isTiny: true,
         minimumConfidence: 0.3,
         useNNAPI: false,
@@ -87,9 +87,9 @@ class _MyAppState extends State<MyApp> {
     print(decodedImage.height);
     if (image == null) return;
     setState(() {
+      _aspectRatio = decodedImage.height / decodedImage.width;
       _busy = true;
       _imagePath = image;
-      _aspectRatio = decodedImage.height / decodedImage.width;
       _recogintios = new List();
     });
     predictImage(image);
@@ -112,7 +112,12 @@ class _MyAppState extends State<MyApp> {
                     opacity: _busy ? 0.7 : 1.0,
                   ),
                   _busy
-                      ? Center(child: CircularProgressIndicator())
+                      ? SizedBox(
+                          child: Center(child: CircularProgressIndicator()),
+                          width: MediaQuery.of(context).size.width,
+                          height:
+                              MediaQuery.of(context).size.width * _aspectRatio,
+                        )
                       : Container(),
                   Column(
                     children: List<Widget>.generate(
