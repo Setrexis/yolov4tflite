@@ -96,7 +96,7 @@ public class Yolov4tflitePlugin implements MethodCallHandler {
                     final String msg = e.getMessage();
                     activity.runOnUiThread(new Runnable(){
                         public void run(){
-                            result.error("Modal failed to loaded", msg, null);
+                            result.error("Modal failed to load", msg, null);
                         }
                     });
                 }
