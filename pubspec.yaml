@@ -26,6 +26,8 @@ flutter:
       android:
         package: com.flutter.yolov4tflite
         pluginClass: Yolov4tflitePlugin
+      ios:
+        pluginClass: Yolov4tflitePlugin
   # To add assets to your package, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg
