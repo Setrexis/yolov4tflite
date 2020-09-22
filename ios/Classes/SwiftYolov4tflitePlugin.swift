@@ -37,15 +37,48 @@ public class SwiftYolov4tflitePlugin: NSObject, FlutterPlugin {
         let labels= call.argument("labels")
         let key = registrar?.lookupKey(forAsset: modelPath)
 
-        detector = Yolov4Classifier(labelData: labels,modelFileKey: key)
-        result("Succsess")
+        loadModel(labelData: labels,modelFileKey: key,result: result)
     }else if(call.methode = "detectObjects"){
+        let path = call.methode("image")
 
-
-        detector.runModel(pixelBuffer: )
+        detectObjects(imagePath: path,result: result)
     }
     
   }
+
+  func loadModel(labelData: String,modelFileKey: String,result: @escaping FlutterResult){
+        DispatchQueue.global(qos: .userInitiated).async {
+            try{
+                detector = Yolov4Classifier(labelData: labelData,modelFileKey: modelFileKey)
+                DispatchQueue.main.sync{
+                    result("Succsess")
+                }
+            }catch{
+                DispatchQueue.main.sync{
+                    result("Error")
+                }
+            }
+        }
+    }
+
+    func detectObjects(imagePath:String, result: @escaping FlutterResult){
+        DispatchQueue.global(qos: .userInitiated).async {
+            try{
+                
+                
+                let recognitions = detector.runModel(pixelBuffer: )
+
+
+                DispatchQueue.main.sync{
+                    result("Succsess")
+                }
+            }catch{
+                DispatchQueue.main.sync{
+                    result("Error")
+                }
+            }
+        }
+    }
 }
 
 public class Yolov4Classifier{
