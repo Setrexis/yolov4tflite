@@ -19,15 +19,30 @@ import UIKit
 import TensorFlowLite
 
 public class SwiftYolov4tflitePlugin: NSObject, FlutterPlugin {
+    let detector: Yolov4Classifier
+    var registrar: FlutterPluginRegistrar? = nil
+
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "yolov4tflite", binaryMessenger: registrar.messenger())
     let instance = SwiftYolov4tflitePlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
+    instance.registrar = registrar
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     if(call.methode == "getPlatformVersion"){
         result("iOS " + UIDevice.current.systemVersion)
+    }else if(call.methode == "loadModel"){
+        let modelPath = call.argument("model")
+        let labels= call.argument("labels")
+        let key = registrar?.lookupKey(forAsset: modelPath)
+
+        detector = Yolov4Classifier(labelData: labels,modelFileKey: key)
+        result("Succsess")
+    }else if(call.methode = "detectObjects"){
+
+
+        detector.runModel(pixelBuffer: )
     }
     
   }
@@ -67,15 +82,15 @@ public class Yolov4Classifier{
     // MARK: - Initialization
     /// A failable initializer for `ModelDataHandler`. A new instance is created if the model and
     /// labels files are successfully loaded from the app's main bundle. Default `threadCount` is 1.
-    init?(modelFileInfo: FileInfo, labelData: String, threadCount: Int = 1,inputSize: Int,isTiny : Bool) {
-        let modelFilename = modelFileInfo.name
+    init?(modelFileKey: String, labelData: String, threadCount: Int = 1,inputSize: Int = 416,isTiny : Bool = true) {
+
 
         // Construct the path to the model file.
         guard let modelPath = Bundle.main.path(
-        forResource: modelFilename,
-        ofType: modelFileInfo.extension
+        forResource: modelFileKey,
+        ofType: "tflite"
         ) else {
-        print("Failed to load the model file with name: \(modelFilename).")
+        print("Failed to load the model file with name: \(modelFileKey).")
         return nil
         }
 
@@ -198,33 +213,15 @@ public class Yolov4Classifier{
                 let h :Float = bboxes[0][i][3];
                 // miss use
                 let rectF = CGRect(
-                        x: Math.max(0, xPos - w / 2),
-                        y: Math.max(0, yPos - h / 2),
-                        w: Math.min(width - 1, xPos + w / 2),
-                        h: Math.min(height - 1, yPos + h / 2));
+                        x: Math.max(0, xPos - w / 2), // left
+                        y: Math.max(0, yPos - h / 2), // top
+                        w: Math.min(width - 1, xPos + w / 2),  // rigth
+                        h: Math.min(height - 1, yPos + h / 2)); // bottom
                 detections.add(Recognition("" + i, labels.get(detectedClass),score,rectF,detectedClass ));
             }
         }
 
         return detections
-    }
-
-
-    /// Loads the labels from the labels file and stores them in the `labels` property.
-    private func loadLabels(fileInfo: FileInfo) {
-        let filename = fileInfo.name
-        let fileExtension = fileInfo.extension
-        guard let fileURL = Bundle.main.url(forResource: filename, withExtension: fileExtension) else {
-        fatalError("Labels file not found in bundle. Please add a labels file with name " +
-                    "\(filename).\(fileExtension) and try again.")
-        }
-        do {
-        let contents = try String(contentsOf: fileURL, encoding: .utf8)
-        labels = contents.components(separatedBy: .newlines)
-        } catch {
-        fatalError("Labels file named \(filename).\(fileExtension) cannot be read. Please add a " +
-                    "valid labels file and try again.")
-        }
     }
 
     /// Returns the RGB data representation of the given image buffer with the specified `byteCount`.
@@ -338,35 +335,35 @@ public class Yolov4Classifier{
         return nmsList;
     }
 
-    protected float mNmsThresh = 0.6f;
+    let mNmsThresh: Float = 0.6;
 
-    protected float box_iou(RectF a, RectF b) {
+    func box_iou(a, b) -> Float {
         return box_intersection(a, b) / box_union(a, b);
     }
 
-    protected float box_intersection(RectF a, RectF b) {
-        float w = overlap((a.left + a.right) / 2, a.right - a.left,
-                (b.left + b.right) / 2, b.right - b.left);
-        float h = overlap((a.top + a.bottom) / 2, a.bottom - a.top,
-                (b.top + b.bottom) / 2, b.bottom - b.top);
+    func box_intersection(a, b) -> Float {
+        float w = overlap((a.x + a.w) / 2, a.w - a.x,
+                (b.x + b.w) / 2, b.w - b.x);
+        float h = overlap((a.y + a.h) / 2, a.h - a.y,
+                (b.y + b.h) / 2, b.h - b.y);
         if (w < 0 || h < 0) return 0;
         float area = w * h;
         return area;
     }
 
-    protected float box_union(RectF a, RectF b) {
-        float i = box_intersection(a, b);
-        float u = (a.right - a.left) * (a.bottom - a.top) + (b.right - b.left) * (b.bottom - b.top) - i;
+    func box_union(a, b) -> Float {
+        let i = box_intersection(a, b);
+        let u = (a.w - a.x) * (a.h - a.y) + (b.w - b.x) * (b.h - b.y) - i;
         return u;
     }
 
-    protected float overlap(float x1, float w1, float x2, float w2) {
-        float l1 = x1 - w1 / 2;
-        float l2 = x2 - w2 / 2;
-        float left = l1 > l2 ? l1 : l2;
-        float r1 = x1 + w1 / 2;
-        float r2 = x2 + w2 / 2;
-        float right = r1 < r2 ? r1 : r2;
+    func overlap(x1,w1, x2, w2) -> Float{
+        let l1 = x1 - w1 / 2;
+        let l2 = x2 - w2 / 2;
+        let left = l1 > l2 ? l1 : l2;
+        let r1 = x1 + w1 / 2;
+        let r2 = x2 + w2 / 2;
+        let right = r1 < r2 ? r1 : r2;
         return right - left;
     }
 }
