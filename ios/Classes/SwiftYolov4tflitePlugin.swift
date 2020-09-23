@@ -19,7 +19,7 @@ import UIKit
 import TensorFlowLite
 
 public class SwiftYolov4tflitePlugin: NSObject, FlutterPlugin {
-    let detector: Yolov4Classifier
+    var detector: Yolov4Classifier
     var registrar: FlutterPluginRegistrar? = nil
 
   public static func register(with registrar: FlutterPluginRegistrar) {
@@ -28,18 +28,22 @@ public class SwiftYolov4tflitePlugin: NSObject, FlutterPlugin {
     registrar.addMethodCallDelegate(instance, channel: channel)
     instance.registrar = registrar
   }
+    
+    public override init() {
+        
+    }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-    if(call.methode == "getPlatformVersion"){
+    if(call.method == "getPlatformVersion"){
         result("iOS " + UIDevice.current.systemVersion)
-    }else if(call.methode == "loadModel"){
-        let modelPath = call.argument("model")
-        let labels = call.argument("labels")
+    }else if(call.method == "loadModel"){
+        let modelPath = call.arguments("model")
+        let labels = call.arguments("labels")
         let key = registrar?.lookupKey(forAsset: modelPath)
 
         loadModel(labelData: labels,modelFileKey: key,result: result)
-    }else if(call.methode = "detectObjects"){
-        let path = call.methode("image")
+    }else if(call.method = "detectObjects"){
+        let path = call.arguments("image")
 
         detectObjects(imagePath: path,result: result)
     }
@@ -48,7 +52,7 @@ public class SwiftYolov4tflitePlugin: NSObject, FlutterPlugin {
   func loadModel(labelData: String,modelFileKey: String,result: @escaping FlutterResult){
         DispatchQueue.global(qos: .userInitiated).async {
             do{
-                detector = try Yolov4Classifier(labelData: labelData,modelFileKey: modelFileKey)
+                detector = try Yolov4Classifier(modelFileKey: modelFileKey, labelData: labelData)
                 DispatchQueue.main.sync{
                     result("Succsess")
                 }
@@ -63,7 +67,7 @@ public class SwiftYolov4tflitePlugin: NSObject, FlutterPlugin {
     func detectObjects(imagePath:String, result: @escaping FlutterResult){
         DispatchQueue.global(qos: .userInitiated).async {
             do{
-                let imageData = try Data(contentsOf: fileURL)
+                let imageData = try Data(contentsOf: imagePath)
                 let image = UIImage(data: imageData)
                 let pixelBuffer = buffer(image: image)
                 
@@ -168,7 +172,7 @@ public class Yolov4Classifier{
 
         // Specify the options for the `Interpreter`.
         self.threadCount = threadCount
-        var options = InterpreterOptions()
+        var options = Interpreter.Options()
         options.threadCount = threadCount
         do {
         // Create the `Interpreter`.
@@ -180,11 +184,11 @@ public class Yolov4Classifier{
         return nil
         }
         // Load the classes listed in the labels file.
-        loadLabels(labelData: String)
+        loadLabels(labelData: labelData)
     }
 
     func loadLabels(labelData: String){
-        labels = split(labelData,{$0 == ","})
+        labels = labelData.split(separator: ",")
     }
 
     /// This class handles all data preprocessing and makes calls to run inference on a given frame
@@ -203,7 +207,7 @@ public class Yolov4Classifier{
         assert(imageChannels >= inputChannels)
 
         // Crops the image to the biggest square in the center and scales it down to model dimensions.
-        let scaledSize = CGSize(width: inputWidth, height: inputHeight)
+        let scaledSize = CGSize(width: inputSize, height: inputSize)
         guard let scaledPixelBuffer = pixelBuffer.resized(to: scaledSize) else {
         return nil
         }
@@ -217,7 +221,7 @@ public class Yolov4Classifier{
         // Remove the alpha component from the image buffer to get the RGB data.
         guard let rgbData = rgbDataFromBuffer(
             scaledPixelBuffer,
-            byteCount: batchSize * inputWidth * inputHeight * inputChannels,
+            byteCount: batchSize * inputSize * inputSize * inputChannels,
             isModelQuantized: inputTensor.dataType == .uInt8
         ) else {
             print("Failed to convert the image buffer to RGB data.")
@@ -240,7 +244,7 @@ public class Yolov4Classifier{
         }
 
         // Formats the results
-        let resultArray = formatResultsFull(
+        let resultArray = formatResults(
                 boundingBox: [Float](unsafeData: outputBoundingBox.data) ?? [],
                 outputScores: [Float](unsafeData: outputScores.data) ?? [],
                 width: CGFloat(imageWidth),
@@ -253,12 +257,12 @@ public class Yolov4Classifier{
     func formatResults(boundingBox: [Float], outputScores: [Float], width: CGFloat, height: CGFloat) -> [Recognition]{
         var detections: [Recognition] = []
         
-        let gridWidth:Int = output_width[0]
+        let gridWidth:Int = output_width
 
-        for i in 0..gridWidth{
+        for i in 0...gridWidth{
             let maxClass :Float = 0;
             let detectedClass :Int = -1;
-            let classes: [Float] = new Float[labels.size()];
+            let classes: [Float] = Float[labels.size()];
             for c in 0..labels.size(){
                 classes [c] = outputScores[0][i][c];
             }
@@ -276,10 +280,10 @@ public class Yolov4Classifier{
                 let h :Float = bboxes[0][i][3];
                 // miss use
                 let rectF = CGRect(
-                        x: Math.max(0, xPos - w / 2), // left
-                        y: Math.max(0, yPos - h / 2), // top
-                        w: Math.min(width - 1, xPos + w / 2),  // rigth
-                        h: Math.min(height - 1, yPos + h / 2)); // bottom
+                        x: max(0, xPos - w / 2), // left
+                        y: max(0, yPos - h / 2), // top
+                        width: min(width - 1, xPos + w / 2),  // rigth
+                        height: min(height - 1, yPos + h / 2)); // bottom
                 detections.add(Recognition("" + i, labels.get(detectedClass),score,rectF,detectedClass ));
             }
         }
@@ -355,18 +359,18 @@ public class Yolov4Classifier{
         return Data(copyingBufferOf: floats)
     }
 
-    func compare(first lhs: Recognition,second rhs Recognition) -> Bool{
+    func compare(first lhs: Recognition,second rhs: Recognition) -> Bool{
         return lhs.getConfidence().isLess(then: rhs.getConfidence())
     }
     
     func nms(list: [Recognition]) -> [Recognition]{
         let nmsList: [Recognition] = [];
 
-        for k in 0..labels.size(){
+        for k in 0...labels.count{
             //1.find max confidence per class
-            pq: Heap<Recognition> = new Heap<Recognition>(priorityFunction: compare)
+            var pq: Heap<Recognition> = Heap<Recognition>(priorityFunction: compare)
 
-            for i in 0..list.size(){
+            for i in 0...list.size(){
                 if (list.get(i).getDetectedClass() == k) {
                     pq.enqueue(list.get(i));
                 }
@@ -375,13 +379,12 @@ public class Yolov4Classifier{
             //2.do non maximum suppression
             while (!pq.isEmpty) {
                 //insert detection with max confidence
-                a = new Recognition[pq.count];
-                detections = pq.toArray(a);
-                max = detections[0];
-                nmsList.add(max);
+                let detections : [Recognition] = pq.toArray();
+                let max: Recognition = detections[0];
+                nmsList.append(max);
                 pq.clear();
 
-                for j in 0..detections.count {
+                for j in 0...detections.count {
                     detection = detections[j];
                     b = detection.getLocation();
                     if (box_iou(max.getLocation(), b) < mNmsThresh) {
@@ -396,22 +399,22 @@ public class Yolov4Classifier{
     let mNmsThresh: Float = 0.6
 
     func box_iou(a : CGRect, b : CGRect) -> Float {
-        return box_intersection(a, b) / box_union(a, b)
+        return box_intersection(a:a, b:b) / box_union(a:a, b:b)
     }
 
     func box_intersection(a: CGRect, b: CGRect) -> Float {
-        let w : Float = overlap((a.x + a.w) / 2, a.w - a.x,
-                (b.x + b.w) / 2, b.w - b.x)
-        let h : Float = overlap((a.y + a.h) / 2, a.h - a.y,
-                (b.y + b.h) / 2, b.h - b.y)
+        let w : Float = overlap((a.x + a.width) / 2, a.width - a.x,
+                (b.x + b.width) / 2, b.width - b.x)
+        let h : Float = overlap((a.y + a.height) / 2, a.height - a.y,
+                (b.y + b.height) / 2, b.height - b.y)
         if (w < 0 || h < 0) {return 0}
-        float area = w * h
+        let area: Float = w * h
         return area
     }
 
     func box_union(a: CGRect, b: CGRect) -> Float {
-        let i = box_intersection(a, b)
-        let u = (a.w - a.x) * (a.h - a.y) + (b.w - b.x) * (b.h - b.y) - i
+        let i :Float = box_intersection(a:a, b:b)
+        let u : Float = (a.width - a.x) * (a.height - a.y) + (b.width - b.x) * (b.height - b.y) - i
         return u
     }
 
@@ -429,29 +432,29 @@ public class Yolov4Classifier{
 
 
 
-public class Recognition : CoustomStringConvertibale{
+public class Recognition : CustomStringConvertible{
     /**
      * A unique identifier for what has been recognized. Specific to the class, not the instance of
      * the object.
      */
-    let id : String;
+    var id : String;
 
     /**
      * Display name for the recognition.
      */
-    let title : String;
+    var title : String;
 
     /**
      * A sortable score for how good the recognition is relative to others. Higher should be better.
      */
-    let confidence: Float;
+    var confidence: Float;
 
     /**
      * Optional location within the source image for the location of the recognized object.
      */
-    let location: CGRect;
+    var location: CGRect;
 
-    let detectedClass: Int;
+    var detectedClass: Int;
 /*
     public Recognition(
             final String id, final String title, final Float confidence, final RectF location) {
@@ -498,26 +501,26 @@ public class Recognition : CoustomStringConvertibale{
     }
 
     public var description: String{
-        let resultString : String = "{"
-        if (id != null) {
-            resultString += "\"id\": " + id + ","
+        var resultString : String = "{"
+        if (id != nil) {
+            resultString = resultString + "\"id\": " + id + ","
         }
 
-        if (title != null) {
-            resultString += "\"detectedClass\": \"" + title + "\","
+        if (title != nil) {
+            resultString = resultString + "\"detectedClass\": \"" + title + "\","
         }
 
-        if (confidence != null) {
-            resultString += "\"confidenceInClass\": " +  confidence + ","
+        if (confidence != nil) {
+            resultString = resultString + "\"confidenceInClass\": " +  String(confidence) + ","
         }
 
-        if (location != null) {
-            resultString += "\"rect\": { \"t\": " + location.x + ", \"b\": " + location.h + ", \"l\": " + location.y + ", \"r\": " + location.w + "}"
+        if (location != nil) {
+            resultString = resultString + "\"rect\": { \"t\": " + String(location.x) + ", \"b\": " + String(location.height) + ", \"l\": " + String(location.y) + ", \"r\": " + String(location.width) + "}"
         }
 
-        resultString += "}"
+        resultString = resultString + "}"
 
-        return resultString.trim()
+        return resultString
     }
 }
 
@@ -556,7 +559,7 @@ struct Heap<Recognition> {
     }
     
     func clear(){
-        self.elements = []
+        elements.clear()
     }
     
     mutating func enqueue(_ element: Recognition){
@@ -569,7 +572,7 @@ struct Heap<Recognition> {
         guard !isRoot(index), isHigherPriority(at: index,than: parant) else {
             return
         }
-        swapElement(at index,with: parant)
+        swapElement(at: index,with: parant)
         siftUp(elementAtIndex: parant)
     }
     
@@ -599,11 +602,11 @@ struct Heap<Recognition> {
     }
     
     func leftChildIndex(of index: Int) -> Int{
-        return (2* index) + 1
+        return (2 * index) + 1
     }
     
     func rigthChildIndex(of index: Int) -> Int{
-        return (2* index) + 2
+        return (2 * index) + 2
     }
     
     func parentIndex(of index : Int)->Int{
@@ -614,15 +617,15 @@ struct Heap<Recognition> {
         return priorityFunction(elements[firstIndex],elements[secondIndex])
     }
     
-    func heighestPriorityIndex(of parantIndex: Int, and childIndex: Int) -> {
+    func heighestPriorityIndex(of parantIndex: Int, and childIndex: Int) -> Int{
         guard childIndex < count && isHigherPriority(at: childIndex, than: parentIndex) else {
             return parantIndex
         }
         return childIndex
     }
     
-    func heighestPriorityIndex(for parant: Int) -> int{
-        return heighestPriorityIndex(of: heighestPriorityIndex(of: parant,and leftChildIndex(of: parant)),and rigthChildIndex(of: parant))
+    func heighestPriorityIndex(for parant: Int) -> Int{
+        return heighestPriorityIndex(of: heighestPriorityIndex(of: parant,and: leftChildIndex(of: parant)),and rigthChildIndex(of: parant))
     }
     
     mutating func swapElement(at firstIndex: Int, with secondIndex: Int){

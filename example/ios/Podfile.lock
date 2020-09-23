@@ -1,0 +1,43 @@
+PODS:
+  - Flutter (1.0.0)
+  - image_picker (0.0.1):
+    - Flutter
+  - TensorFlowLiteC (2.3.0):
+    - TensorFlowLiteC/Core (= 2.3.0)
+  - TensorFlowLiteC/Core (2.3.0)
+  - TensorFlowLiteSwift (2.3.0):
+    - TensorFlowLiteSwift/Core (= 2.3.0)
+  - TensorFlowLiteSwift/Core (2.3.0):
+    - TensorFlowLiteC (= 2.3.0)
+  - yolov4tflite (0.0.1):
+    - Flutter
+    - TensorFlowLiteSwift
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - image_picker (from `.symlinks/plugins/image_picker/ios`)
+  - yolov4tflite (from `.symlinks/plugins/yolov4tflite/ios`)
+
+SPEC REPOS:
+  trunk:
+    - TensorFlowLiteC
+    - TensorFlowLiteSwift
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  image_picker:
+    :path: ".symlinks/plugins/image_picker/ios"
+  yolov4tflite:
+    :path: ".symlinks/plugins/yolov4tflite/ios"
+
+SPEC CHECKSUMS:
+  Flutter: 0e3d915762c693b495b44d77113d4970485de6ec
+  image_picker: 9c3312491f862b28d21ecd8fdf0ee14e601b3f09
+  TensorFlowLiteC: 51f50caf5777f740a70e2c1a5dbdc149e7aeb50b
+  TensorFlowLiteSwift: fb152cc1eec36b25b03a23c07f5d58113170af58
+  yolov4tflite: 56b51bf87aafec5ef91375be567ac0f002a4130b
+
+PODFILE CHECKSUM: c7066c19cbd6db6fcfde07d7056ae8b3d8871e59
+
+COCOAPODS: 1.9.3
