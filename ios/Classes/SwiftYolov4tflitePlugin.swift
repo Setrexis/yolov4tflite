@@ -34,7 +34,7 @@ public class SwiftYolov4tflitePlugin: NSObject, FlutterPlugin {
         result("iOS " + UIDevice.current.systemVersion)
     }else if(call.methode == "loadModel"){
         let modelPath = call.argument("model")
-        let labels= call.argument("labels")
+        let labels = call.argument("labels")
         let key = registrar?.lookupKey(forAsset: modelPath)
 
         loadModel(labelData: labels,modelFileKey: key,result: result)
@@ -183,7 +183,7 @@ public class Yolov4Classifier{
         loadLabels(labelData: String)
     }
 
-    private loadLabels(labelData: String){
+    func loadLabels(labelData: String){
         labels = split(labelData,{$0 == ","})
     }
 
@@ -258,7 +258,7 @@ public class Yolov4Classifier{
         for i in 0..gridWidth{
             let maxClass :Float = 0;
             let detectedClass :Int = -1;
-            let classes: Float[] = new Float[labels.size()];
+            let classes: [Float] = new Float[labels.size()];
             for c in 0..labels.size(){
                 classes [c] = outputScores[0][i][c];
             }
@@ -268,7 +268,7 @@ public class Yolov4Classifier{
                     maxClass = classes[c];
                 }
             }
-            let score . Float = maxClass;
+            let score : Float = maxClass;
             if (score > threshold){
                 let xPos :Float = bboxes[0][i][0];
                 let yPos :Float = bboxes[0][i][1];
@@ -355,72 +355,67 @@ public class Yolov4Classifier{
         return Data(copyingBufferOf: floats)
     }
 
-    func nms(list: Recognition[]) -> [Recognition]{
-        let nmsList: Recognition[] = [];
+    func compare(first lhs: Recognition,second rhs Recognition) -> Bool{
+        return lhs.getConfidence().isLess(then: rhs.getConfidence())
+    }
+    
+    func nms(list: [Recognition]) -> [Recognition]{
+        let nmsList: [Recognition] = [];
 
         for k in 0..labels.size(){
             //1.find max confidence per class
-            PriorityQueue<Recognition> pq =
-                    new PriorityQueue<Recognition>(
-                            50,
-                            new Comparator<Recognition>() {
-                                @Override
-                                public int compare(final Recognition lhs, final Recognition rhs) {
-                                    // Intentionally reversed to put high confidence at the head of the queue.
-                                    return Float.compare(rhs.getConfidence(), lhs.getConfidence());
-                                }
-                            });
+            pq: Heap<Recognition> = new Heap<Recognition>(priorityFunction: compare)
 
-            for (int i = 0; i < list.size(); ++i) {
+            for i in 0..list.size(){
                 if (list.get(i).getDetectedClass() == k) {
-                    pq.add(list.get(i));
+                    pq.enqueue(list.get(i));
                 }
             }
 
             //2.do non maximum suppression
-            while (pq.size() > 0) {
+            while (!pq.isEmpty) {
                 //insert detection with max confidence
-                Recognition[] a = new Recognition[pq.size()];
-                Recognition[] detections = pq.toArray(a);
-                Recognition max = detections[0];
+                a = new Recognition[pq.count];
+                detections = pq.toArray(a);
+                max = detections[0];
                 nmsList.add(max);
                 pq.clear();
 
-                for (int j = 1; j < detections.length; j++) {
-                    Recognition detection = detections[j];
-                    RectF b = detection.getLocation();
+                for j in 0..detections.count {
+                    detection = detections[j];
+                    b = detection.getLocation();
                     if (box_iou(max.getLocation(), b) < mNmsThresh) {
-                        pq.add(detection);
+                        pq.enqueue(detection);
                     }
                 }
             }
         }
-        return nmsList;
+        return nmsList
     }
 
-    let mNmsThresh: Float = 0.6;
+    let mNmsThresh: Float = 0.6
 
-    func box_iou(a, b) -> Float {
-        return box_intersection(a, b) / box_union(a, b);
+    func box_iou(a : CGRect, b : CGRect) -> Float {
+        return box_intersection(a, b) / box_union(a, b)
     }
 
-    func box_intersection(a, b) -> Float {
-        float w = overlap((a.x + a.w) / 2, a.w - a.x,
-                (b.x + b.w) / 2, b.w - b.x);
-        float h = overlap((a.y + a.h) / 2, a.h - a.y,
-                (b.y + b.h) / 2, b.h - b.y);
-        if (w < 0 || h < 0) return 0;
-        float area = w * h;
-        return area;
+    func box_intersection(a: CGRect, b: CGRect) -> Float {
+        let w : Float = overlap((a.x + a.w) / 2, a.w - a.x,
+                (b.x + b.w) / 2, b.w - b.x)
+        let h : Float = overlap((a.y + a.h) / 2, a.h - a.y,
+                (b.y + b.h) / 2, b.h - b.y)
+        if (w < 0 || h < 0) {return 0}
+        float area = w * h
+        return area
     }
 
-    func box_union(a, b) -> Float {
-        let i = box_intersection(a, b);
-        let u = (a.w - a.x) * (a.h - a.y) + (b.w - b.x) * (b.h - b.y) - i;
-        return u;
+    func box_union(a: CGRect, b: CGRect) -> Float {
+        let i = box_intersection(a, b)
+        let u = (a.w - a.x) * (a.h - a.y) + (b.w - b.x) * (b.h - b.y) - i
+        return u
     }
 
-    func overlap(x1,w1, x2, w2) -> Float{
+    func overlap(x1 : Float,w1: Float, x2: Float, w2: Float) -> Float{
         let l1 = x1 - w1 / 2;
         let l2 = x2 - w2 / 2;
         let left = l1 > l2 ? l1 : l2;
@@ -466,12 +461,12 @@ public class Recognition : CoustomStringConvertibale{
         this.location = location;
     }
 */
-    public Recognition(id:String,title:String,confidence: Float,location:CGRect, detectedClass:Int) {
-        this.id = id;
-        this.title = title;
-        this.confidence = confidence;
-        this.location = location;
-        this.detectedClass = detectedClass;
+    init?(id:String,title:String,confidence: Float,location:CGRect, detectedClass:Int) {
+        self.id = id;
+        self.title = title;
+        self.confidence = confidence;
+        self.location = location;
+        self.detectedClass = detectedClass;
     }
 /*
     public String getId() {
@@ -485,44 +480,157 @@ public class Recognition : CoustomStringConvertibale{
     public Float getConfidence() {
         return confidence;
     }
-
-    public RectF getLocation() {
-        return new RectF(location);
+     */
+    func getLocation() -> CGRect{
+        return location;
     }
 
-    public void setLocation(RectF location) {
-        this.location = location;
+    func setLocation(location: CGRect) {
+        self.location = location;
     }
 
-    public int getDetectedClass() {
+    func setDetectedClass(detectedClass: Int) {
+        self.detectedClass = detectedClass;
+    }
+ 
+    func getDetectedClass() -> Int {
         return detectedClass;
     }
 
-    public void setDetectedClass(int detectedClass) {
-        this.detectedClass = detectedClass;
-    }
- */
-
     public var description: String{
-        let resultString : String = "{";
+        let resultString : String = "{"
         if (id != null) {
-            resultString += "\"id\": " + id + ",";
+            resultString += "\"id\": " + id + ","
         }
 
         if (title != null) {
-            resultString += "\"detectedClass\": \"" + title + "\",";
+            resultString += "\"detectedClass\": \"" + title + "\","
         }
 
         if (confidence != null) {
-            resultString += "\"confidenceInClass\": " +  confidence +",";
+            resultString += "\"confidenceInClass\": " +  confidence + ","
         }
 
         if (location != null) {
-            resultString += "\"rect\": { \"t\": " + location.x + ", \"b\": " + location.h +", \"l\": " + location.y + ", \"r\": " + location.w + "}";
+            resultString += "\"rect\": { \"t\": " + location.x + ", \"b\": " + location.h + ", \"l\": " + location.y + ", \"r\": " + location.w + "}"
         }
 
-        resultString += "}";
+        resultString += "}"
 
-        return resultString.trim();
+        return resultString.trim()
     }
+}
+
+
+// designd after https://www.raywenderlich.com/586-swift-algorithm-club-heap-and-priority-queue-data-structure
+struct Heap<Recognition> {
+    var elements: [Recognition]
+    let priorityFunction: (Recognition,Recognition) -> Bool
+    
+    var isEmpty : Bool{
+        return elements.isEmpty
+    }
+    
+    var count : Int {
+        return elements.count
+    }
+    
+    init(elements: [Recognition] = [],priorityFunction: @escaping (Recognition,Recognition)->Bool) {
+        self.elements = elements
+        self.priorityFunction = priorityFunction
+        buildHeap()
+    }
+    
+    mutating func buildHeap(){
+        for index in (0..< count / 2).reversed(){
+            siftDown(elementAtIndex: index)
+        }
+    }
+    
+    func peek() -> Recognition? {
+        return elements.first
+    }
+    
+    func toArray() -> [Recognition]{
+        return elements
+    }
+    
+    func clear(){
+        self.elements = []
+    }
+    
+    mutating func enqueue(_ element: Recognition){
+        elements.append(element)
+        siftUp(elementAtIndex: count - 1)
+    }
+    
+    mutating func siftUp(elementAtIndex index: Int){
+        let parant = parentIndex(of: index)
+        guard !isRoot(index), isHigherPriority(at: index,than: parant) else {
+            return
+        }
+        swapElement(at index,with: parant)
+        siftUp(elementAtIndex: parant)
+    }
+    
+    mutating func dequeue() -> Recognition? {
+        guard !isEmpty else {
+            return nil
+        }
+        swapElement(at: 0,with: count - 1)
+        let element = elements.removeLast()
+        if !isEmpty {
+            siftDown(elementAtIndex: 0)
+        }
+        return element
+    }
+    
+    mutating func siftDown(elementAtIndex index :Int){
+        let childIndex = heighestPriorityIndex(for: index)
+        if index == childIndex{
+            return
+        }
+        swapElement(at: index,with: childIndex)
+        siftDown(elementAtIndex: childIndex)
+    }
+    
+    func isRoot(_ index: Int)-> Bool {
+        return (index == 0)
+    }
+    
+    func leftChildIndex(of index: Int) -> Int{
+        return (2* index) + 1
+    }
+    
+    func rigthChildIndex(of index: Int) -> Int{
+        return (2* index) + 2
+    }
+    
+    func parentIndex(of index : Int)->Int{
+        return (index - 1) / 2
+    }
+    
+    func isHigherPriority(at firstIndex: Int, than secondIndex: Int)-> Bool {
+        return priorityFunction(elements[firstIndex],elements[secondIndex])
+    }
+    
+    func heighestPriorityIndex(of parantIndex: Int, and childIndex: Int) -> {
+        guard childIndex < count && isHigherPriority(at: childIndex, than: parentIndex) else {
+            return parantIndex
+        }
+        return childIndex
+    }
+    
+    func heighestPriorityIndex(for parant: Int) -> int{
+        return heighestPriorityIndex(of: heighestPriorityIndex(of: parant,and leftChildIndex(of: parant)),and rigthChildIndex(of: parant))
+    }
+    
+    mutating func swapElement(at firstIndex: Int, with secondIndex: Int){
+        guard firstIndex != secondIndex else {
+            return
+        }
+        swap(&elements[firstIndex],&elements[secondIndex])
+    }
+    
+    
 }

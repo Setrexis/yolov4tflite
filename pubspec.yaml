@@ -1,8 +1,8 @@
 name: yolov4tflite
 description: A new Flutter package project.
 version: 0.0.1
-author:
-homepage:
+author: Me
+homepage: www.example.com
 
 environment:
   sdk: ">=2.7.0 <3.0.0"
