@@ -17,33 +17,38 @@
 import Flutter
 import UIKit
 import TensorFlowLite
+import CoreImage
+import Accelerate
 
 public class SwiftYolov4tflitePlugin: NSObject, FlutterPlugin {
-    var detector: Yolov4Classifier
+    var detector: Yolov4Classifier? = nil
     var registrar: FlutterPluginRegistrar? = nil
+    var modelLoaded: Bool = false
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "yolov4tflite", binaryMessenger: registrar.messenger())
-    let instance = SwiftYolov4tflitePlugin()
+    let instance = SwiftYolov4tflitePlugin(of: registrar)
     registrar.addMethodCallDelegate(instance, channel: channel)
-    instance.registrar = registrar
   }
     
-    public override init() {
-        
+    init(of registrar: FlutterPluginRegistrar) {
+        super.init()
+        self.registrar = registrar
     }
 
-  public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     if(call.method == "getPlatformVersion"){
         result("iOS " + UIDevice.current.systemVersion)
     }else if(call.method == "loadModel"){
-        let modelPath = call.arguments("model")
-        let labels = call.arguments("labels")
-        let key = registrar?.lookupKey(forAsset: modelPath)
+        let args = call.arguments as? Dictionary<String, Any>
+        let modelPath = (args!["model"] as? String)!
+        guard let labels = args!["labels"] as? String else { return result("No labels provided") }
+        guard let key = registrar?.lookupKey(forAsset: modelPath) else { return result("No model path provided") }
 
         loadModel(labelData: labels,modelFileKey: key,result: result)
-    }else if(call.method = "detectObjects"){
-        let path = call.arguments("image")
+    }else if(call.method == "detectObjects"){
+        let args = call.arguments as? Dictionary<String, Any>
+        guard let path = (args!["image"] as? String) else { return result("No image path provided") }
 
         detectObjects(imagePath: path,result: result)
     }
@@ -52,7 +57,8 @@ public class SwiftYolov4tflitePlugin: NSObject, FlutterPlugin {
   func loadModel(labelData: String,modelFileKey: String,result: @escaping FlutterResult){
         DispatchQueue.global(qos: .userInitiated).async {
             do{
-                detector = try Yolov4Classifier(modelFileKey: modelFileKey, labelData: labelData)
+                self.detector = try Yolov4Classifier(modelFileKey: modelFileKey, labelData: labelData)
+                self.modelLoaded = true
                 DispatchQueue.main.sync{
                     result("Succsess")
                 }
@@ -66,16 +72,28 @@ public class SwiftYolov4tflitePlugin: NSObject, FlutterPlugin {
 
     func detectObjects(imagePath:String, result: @escaping FlutterResult){
         DispatchQueue.global(qos: .userInitiated).async {
+            if(!self.modelLoaded){
+                result("Please load model")
+                return
+            }
             do{
-                let imageData = try Data(contentsOf: imagePath)
-                let image = UIImage(data: imageData)
-                let pixelBuffer = buffer(image: image)
+                guard
+                  let pathUrl = URL(string: imagePath),
+                    ((try? pathUrl != nil) != nil)
+                  else { return }
+                let imageData = try Data(contentsOf: pathUrl)
+                guard let image = UIImage(data: imageData),
+                      ((try? image != nil) != nil)
+                else{return}
+                guard let pixelBuffer = self.buffer(from: image),
+                      ((try? pixelBuffer != nil) != nil)
+                else{return}
                 
-                let recognitions = try detector.runModel(pixelBuffer: pixelBuffer)
+                let recognitions = try self.detector!.runModel(onFrame: pixelBuffer)
 
                 var reg : [String] = []
-                for r in recognitions{
-                    reg.append(String(r))
+                for r in 0...recognitions!.count{
+                    reg.append((recognitions![r].description))
                 }
 
                 DispatchQueue.main.sync{
@@ -118,30 +136,30 @@ public class SwiftYolov4tflitePlugin: NSObject, FlutterPlugin {
 public class Yolov4Classifier{
     // MARK: - Internal Properties
     /// The current thread count used by the TensorFlow Lite Interpreter.
-    let threadCount: Int
+    var threadCount: Int
 
     let resultCount = 3
     let threadCountLimit = 10
 
-    let threshold: Float = 0.5
+    var threshold: Float = 0.5
 
     // MARK: - Model Parameters
     let batchSize = 1
     let inputChannels = 3
-    let inputSize : Int
-    let output_width : Int
-    let isTiny : Bool
+    var inputSize : Int
+    var output_width : Int
+    var isTiny : Bool
 
     // image mean and std for floating model, should be consistent with parameters used in model training
-    let imageMean: Float = 127.5
-    let imageStd:  Float = 127.5
+    var imageMean: Float = 127.5
+    var imageStd:  Float = 127.5
 
     // MARK: - Private Properties
     /// List of labels from the given labels file.
     private var labels: [String] = []
 
     /// TensorFlow Lite `Interpreter` object for performing inference on a given model.
-    private var interpreter: Interpreter
+    private var interpreter: Interpreter?
 
     /// Information about the alpha component in RGBA data.
     private let alphaComponent = (baseOffset: 4, moduloRemainder: 3)
@@ -149,8 +167,12 @@ public class Yolov4Classifier{
     // MARK: - Initialization
     /// A failable initializer for `ModelDataHandler`. A new instance is created if the model and
     /// labels files are successfully loaded from the app's main bundle. Default `threadCount` is 1.
-    init?(modelFileKey: String, labelData: String, threadCount: Int = 1,inputSize: Int = 416,isTiny : Bool = true) {
-
+    init(modelFileKey: String, labelData: String, threadCount: Int = 1,inputSize: Int = 416,isTiny : Bool = true) {
+        self.inputSize = inputSize
+        self.isTiny = isTiny
+        self.threadCount = threadCount
+        self.output_width = 0
+        self.interpreter = nil
 
         // Construct the path to the model file.
         guard let modelPath = Bundle.main.path(
@@ -158,12 +180,11 @@ public class Yolov4Classifier{
         ofType: "tflite"
         ) else {
         print("Failed to load the model file with name: \(modelFileKey).")
-        return nil
+        return
         }
 
         // Set model size
-        self.inputSize = inputSize
-        self.isTiny = isTiny
+        self.output_width = 0
         if(isTiny){
             self.output_width = 2535
         }else{
@@ -171,24 +192,25 @@ public class Yolov4Classifier{
         }
 
         // Specify the options for the `Interpreter`.
-        self.threadCount = threadCount
         var options = Interpreter.Options()
         options.threadCount = threadCount
         do {
         // Create the `Interpreter`.
         interpreter = try Interpreter(modelPath: modelPath, options: options)
         // Allocate memory for the model's input `Tensor`s.
-        try interpreter.allocateTensors()
+        try interpreter!.allocateTensors()
         } catch let error {
         print("Failed to create the interpreter with error: \(error.localizedDescription)")
-        return nil
+        return
         }
         // Load the classes listed in the labels file.
         loadLabels(labelData: labelData)
     }
 
     func loadLabels(labelData: String){
-        labels = labelData.split(separator: ",")
+        labels = labelData.split(separator: ",").map({ (substring) in
+            return String(substring)
+        })
     }
 
     /// This class handles all data preprocessing and makes calls to run inference on a given frame
@@ -207,8 +229,7 @@ public class Yolov4Classifier{
         assert(imageChannels >= inputChannels)
 
         // Crops the image to the biggest square in the center and scales it down to model dimensions.
-        let scaledSize = CGSize(width: inputSize, height: inputSize)
-        guard let scaledPixelBuffer = pixelBuffer.resized(to: scaledSize) else {
+        guard let scaledPixelBuffer = resize(pixelBuffer: pixelBuffer,to: inputSize) else {
         return nil
         }
 
@@ -216,7 +237,7 @@ public class Yolov4Classifier{
         let outputBoundingBox: Tensor
         let outputScores: Tensor
         do {
-        let inputTensor = try interpreter.input(at: 0)
+        let inputTensor = try interpreter!.input(at: 0)
 
         // Remove the alpha component from the image buffer to get the RGB data.
         guard let rgbData = rgbDataFromBuffer(
@@ -229,15 +250,15 @@ public class Yolov4Classifier{
         }
 
         // Copy the RGB data to the input `Tensor`.
-        try interpreter.copy(rgbData, toInputAt: 0)
+        try interpreter!.copy(rgbData, toInputAt: 0)
 
         // Run inference by invoking the `Interpreter`.
         let startDate = Date()
-        try interpreter.invoke()
+        try interpreter!.invoke()
         interval = Date().timeIntervalSince(startDate) * 1000
 
-        outputBoundingBox = try interpreter.output(at: 0)
-        outputScores = try interpreter.output(at: 1)
+        outputBoundingBox = try interpreter!.output(at: 0)
+        outputScores = try interpreter!.output(at: 1)
         } catch let error {
         print("Failed to invoke the interpreter with error: \(error.localizedDescription)")
         return nil
@@ -250,9 +271,20 @@ public class Yolov4Classifier{
                 width: CGFloat(imageWidth),
                 height: CGFloat(imageHeight))
 
-        return nms(resultArray)
+        return nms(list:resultArray)
     }
 
+    func resize(pixelBuffer: CVPixelBuffer,to imageSize: Int) -> CVPixelBuffer? {
+      var ciImage = CIImage(cvPixelBuffer: pixelBuffer, options: nil)
+      let transform = CGAffineTransform(scaleX: CGFloat(imageSize) / CGFloat(CVPixelBufferGetWidth(pixelBuffer)), y: CGFloat(imageSize) / CGFloat(CVPixelBufferGetHeight(pixelBuffer)))
+      ciImage = ciImage.transformed(by: transform).cropped(to: CGRect(x: 0, y: 0, width: imageSize, height: imageSize))
+      let ciContext = CIContext()
+      var resizeBuffer: CVPixelBuffer?
+      CVPixelBufferCreate(kCFAllocatorDefault, imageSize, imageSize, CVPixelBufferGetPixelFormatType(pixelBuffer), nil, &resizeBuffer)
+      ciContext.render(ciImage, to: resizeBuffer!)
+      return resizeBuffer
+    }
+    
     
     func formatResults(boundingBox: [Float], outputScores: [Float], width: CGFloat, height: CGFloat) -> [Recognition]{
         var detections: [Recognition] = []
@@ -260,31 +292,35 @@ public class Yolov4Classifier{
         let gridWidth:Int = output_width
 
         for i in 0...gridWidth{
-            let maxClass :Float = 0;
-            let detectedClass :Int = -1;
-            let classes: [Float] = Float[labels.size()];
-            for c in 0..labels.size(){
-                classes [c] = outputScores[0][i][c];
+            var maxClass :Float = 0
+            var detectedClass :Int = -1
+            var classes: [Float] = []
+            for c in 0...labels.count{
+                classes.append(outputScores[i+c])
             }
-            for c in 0..labels.size(){
+            for c in 0...labels.count{
                 if (classes[c] > maxClass){
-                    detectedClass = c;
-                    maxClass = classes[c];
+                    detectedClass = c
+                    maxClass = classes[c]
                 }
             }
             let score : Float = maxClass;
             if (score > threshold){
-                let xPos :Float = bboxes[0][i][0];
-                let yPos :Float = bboxes[0][i][1];
-                let w: Float = bboxes[0][i][2];
-                let h :Float = bboxes[0][i][3];
+                /*let xPos :Float = bboxes[0][i][0]
+                let yPos :Float = bboxes[0][i][1]
+                let w: Float = bboxes[0][i][2]
+                let h :Float = bboxes[0][i][3]*/
+                let xPos: Float = boundingBox[4*i]
+                let yPos: Float = boundingBox[4*i+1]
+                let w: Float = boundingBox[4*i+2]
+                let h: Float = boundingBox[4*i+3]
                 // miss use
-                let rectF = CGRect(
-                        x: max(0, xPos - w / 2), // left
-                        y: max(0, yPos - h / 2), // top
-                        width: min(width - 1, xPos + w / 2),  // rigth
-                        height: min(height - 1, yPos + h / 2)); // bottom
-                detections.add(Recognition("" + i, labels.get(detectedClass),score,rectF,detectedClass ));
+                let rectF: CGRect = CGRect(
+                        x: CGFloat(max(0, xPos - w / 2)), // left
+                        y: CGFloat(max(0, yPos - h / 2)), // top
+                    width: CGFloat(min(Float(width - 1), xPos + w / 2)),  // rigth
+                    height: CGFloat(min(Float(height - 1), yPos + h / 2)))// bottom
+                detections.append(Recognition(id:"" + i.description,title: labels[detectedClass],confidence: score,location: rectF,detectedClass: detectedClass )!)
             }
         }
 
@@ -360,19 +396,19 @@ public class Yolov4Classifier{
     }
 
     func compare(first lhs: Recognition,second rhs: Recognition) -> Bool{
-        return lhs.getConfidence().isLess(then: rhs.getConfidence())
+        return lhs.getConfidence().isLess(than: rhs.getConfidence())
     }
     
     func nms(list: [Recognition]) -> [Recognition]{
-        let nmsList: [Recognition] = [];
+        var nmsList: [Recognition] = [];
 
         for k in 0...labels.count{
             //1.find max confidence per class
             var pq: Heap<Recognition> = Heap<Recognition>(priorityFunction: compare)
 
-            for i in 0...list.size(){
-                if (list.get(i).getDetectedClass() == k) {
-                    pq.enqueue(list.get(i));
+            for i in 0...list.count{
+                if (list[i].getDetectedClass() == k) {
+                    pq.enqueue(list[i]);
                 }
             }
 
@@ -385,9 +421,9 @@ public class Yolov4Classifier{
                 pq.clear();
 
                 for j in 0...detections.count {
-                    detection = detections[j];
-                    b = detection.getLocation();
-                    if (box_iou(max.getLocation(), b) < mNmsThresh) {
+                    let detection : Recognition = detections[j];
+                    let b: CGRect = detection.getLocation();
+                    if (box_iou(a:max.getLocation(), b:b) < mNmsThresh) {
                         pq.enqueue(detection);
                     }
                 }
@@ -403,10 +439,10 @@ public class Yolov4Classifier{
     }
 
     func box_intersection(a: CGRect, b: CGRect) -> Float {
-        let w : Float = overlap((a.x + a.width) / 2, a.width - a.x,
-                (b.x + b.width) / 2, b.width - b.x)
-        let h : Float = overlap((a.y + a.height) / 2, a.height - a.y,
-                (b.y + b.height) / 2, b.height - b.y)
+        let w : Float = overlap(x1: (Float)((a.minX + a.width) / 2), w1: (Float)(a.width - a.minX),
+                                x2: (Float)((b.minX + b.width) / 2), w2: (Float)(b.width - b.minX))
+        let h : Float = overlap(x1:(Float)((a.minY + a.height) / 2), w1: (Float)(a.height - a.minY),
+                                x2:(Float)((b.minY + b.height) / 2), w2: (Float)(b.height - b.minY))
         if (w < 0 || h < 0) {return 0}
         let area: Float = w * h
         return area
@@ -414,7 +450,9 @@ public class Yolov4Classifier{
 
     func box_union(a: CGRect, b: CGRect) -> Float {
         let i :Float = box_intersection(a:a, b:b)
-        let u : Float = (a.width - a.x) * (a.height - a.y) + (b.width - b.x) * (b.height - b.y) - i
+        let g : Float = (Float)(a.width - a.minX) * (Float)(a.height - a.minY)
+        let h: Float = (Float)(b.width - b.minX) * (Float)(b.height - b.minY)
+        let u : Float = g + h - i
         return u
     }
 
@@ -430,7 +468,7 @@ public class Yolov4Classifier{
 }
 
 
-
+// MARK: - Recognition
 
 public class Recognition : CustomStringConvertible{
     /**
@@ -479,11 +517,11 @@ public class Recognition : CustomStringConvertible{
     public String getTitle() {
         return title;
     }
-
-    public Float getConfidence() {
+     */
+    func getConfidence() -> Float {
         return confidence;
     }
-     */
+     
     func getLocation() -> CGRect{
         return location;
     }
@@ -515,7 +553,7 @@ public class Recognition : CustomStringConvertible{
         }
 
         if (location != nil) {
-            resultString = resultString + "\"rect\": { \"t\": " + String(location.x) + ", \"b\": " + String(location.height) + ", \"l\": " + String(location.y) + ", \"r\": " + String(location.width) + "}"
+            resultString = resultString + "\"rect\": { \"t\": " + location.minX.description + ", \"b\": " + location.height.description + ", \"l\": " + location.minY.description + ", \"r\": " + location.width.description + "}"
         }
 
         resultString = resultString + "}"
@@ -524,6 +562,8 @@ public class Recognition : CustomStringConvertible{
     }
 }
 
+
+// MARK: - Heap (PriorityQueue)
 
 // designd after https://www.raywenderlich.com/586-swift-algorithm-club-heap-and-priority-queue-data-structure
 struct Heap<Recognition> {
@@ -545,7 +585,8 @@ struct Heap<Recognition> {
     }
     
     mutating func buildHeap(){
-        for index in (0..< count / 2).reversed(){
+        let n : Int = count/2
+        for index in (0...n).reversed(){
             siftDown(elementAtIndex: index)
         }
     }
@@ -558,8 +599,8 @@ struct Heap<Recognition> {
         return elements
     }
     
-    func clear(){
-        elements.clear()
+    mutating func clear(){
+        self.elements = []
     }
     
     mutating func enqueue(_ element: Recognition){
@@ -618,22 +659,60 @@ struct Heap<Recognition> {
     }
     
     func heighestPriorityIndex(of parantIndex: Int, and childIndex: Int) -> Int{
-        guard childIndex < count && isHigherPriority(at: childIndex, than: parentIndex) else {
+        guard childIndex < count && isHigherPriority(at: childIndex, than: parantIndex) else {
             return parantIndex
         }
         return childIndex
     }
     
     func heighestPriorityIndex(for parant: Int) -> Int{
-        return heighestPriorityIndex(of: heighestPriorityIndex(of: parant,and: leftChildIndex(of: parant)),and rigthChildIndex(of: parant))
+        return heighestPriorityIndex(of: heighestPriorityIndex(of: parant,and: leftChildIndex(of: parant)),and: rigthChildIndex(of: parant))
     }
     
     mutating func swapElement(at firstIndex: Int, with secondIndex: Int){
         guard firstIndex != secondIndex else {
             return
         }
-        swap(&elements[firstIndex],&elements[secondIndex])
+        elements.swapAt(firstIndex, secondIndex)
     }
     
     
+}
+
+// MARK: - Extensions
+
+extension Data {
+  /// Creates a new buffer by copying the buffer pointer of the given array.
+  ///
+  /// - Warning: The given array's element type `T` must be trivial in that it can be copied bit
+  ///     for bit with no indirection or reference-counting operations; otherwise, reinterpreting
+  ///     data from the resulting buffer has undefined behavior.
+  /// - Parameter array: An array with elements of type `T`.
+  init<T>(copyingBufferOf array: [T]) {
+    self = array.withUnsafeBufferPointer(Data.init)
+  }
+}
+
+extension Array {
+  /// Creates a new array from the bytes of the given unsafe data.
+  ///
+  /// - Warning: The array's `Element` type must be trivial in that it can be copied bit for bit
+  ///     with no indirection or reference-counting operations; otherwise, copying the raw bytes in
+  ///     the `unsafeData`'s buffer to a new array returns an unsafe copy.
+  /// - Note: Returns `nil` if `unsafeData.count` is not a multiple of
+  ///     `MemoryLayout<Element>.stride`.
+  /// - Parameter unsafeData: The data containing the bytes to turn into an array.
+  init?(unsafeData: Data) {
+    guard unsafeData.count % MemoryLayout<Element>.stride == 0 else { return nil }
+    #if swift(>=5.0)
+    self = unsafeData.withUnsafeBytes { .init($0.bindMemory(to: Element.self)) }
+    #else
+    self = unsafeData.withUnsafeBytes {
+      .init(UnsafeBufferPointer<Element>(
+        start: $0,
+        count: unsafeData.count / MemoryLayout<Element>.stride
+      ))
+    }
+    #endif  // swift(>=5.0)
+  }
 }
