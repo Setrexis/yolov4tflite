@@ -63,6 +63,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<bool> loadModel() async {
+    DateTime startTime = DateTime.now();
     String labels = await getFileData("assets/labels.txt");
     labels = labels
         .replaceAll(new RegExp("[\n]"), ",")
@@ -77,6 +78,9 @@ class _MyAppState extends State<MyApp> {
         useNNAPI: false,
         useGPU: false,
         nummberOfThreads: 6);
+    print("Model took " +
+        DateTime.now().difference(startTime).toString() +
+        " to load");
     return true;
   }
 
@@ -174,7 +178,7 @@ class _MyAppState extends State<MyApp> {
 
     var r = await Yolov4tflite.detectObjects(imagePath: path);
 
-    print(DateTime.now().difference(startTime));
+    print("Prediction took " + DateTime.now().difference(startTime).toString());
     print(r);
 
     List<Result> results = new List();
