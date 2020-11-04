@@ -19,7 +19,7 @@ class Yolov4tflite {
   /// [inputSize] specify the models input size.
   ///
   /// Use [numberOfThreads] if you want to change models performence.
-  /// If you want to use NNAPI set [useNNAPI]=true.
+  /// If you want to use NNAPI set [useNNAPI]=true (only Android).
   /// If you want to use GPU set [useGPU]=true.
   /// If you set [useNNAPI] and [useGPU] on true NNAPI is used if avaleble.
   /// For more information about enchancing you models performence visit https://www.tensorflow.org/lite/performance/best_practices.
